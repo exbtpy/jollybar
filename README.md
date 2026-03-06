@@ -21,9 +21,11 @@ Now it's just a glimpse away — always sitting at the top of your screen.
 A tiny macOS menu bar app that shows your Claude API usage at a glance. Click it for the full picture:
 
 - Menu bar icon with a mini dual-bar showing 5-hour and 7-day utilization
-- Detailed popover with per-window usage and reset timers
+- Detailed popover with per-window usage, per-model breakdown, and reset timers
+- Extra usage tracking with USD currency display
 - Usage history chart — see how your usage evolves over time (1h / 6h / 1d / 7d / 30d)
 - Hover over the chart to see exact values at any point
+- Configurable polling interval (5m / 15m / 30m / 1h)
 - Just sign in — OAuth via browser, no API keys to manage
 - Zero dependencies — pure SwiftUI, Swift Charts, and Foundation
 
@@ -51,10 +53,12 @@ make install        # copy to /Applications
 1. Launch the app — a menu bar icon appears
 2. Click the icon → **Sign in with Claude** → authorize in your browser
 3. Paste the code back into the app
-4. The icon updates every 60 seconds with your current utilization
+4. The icon updates automatically (default: every 30 minutes)
 
 Click the icon anytime to see:
 - 5-hour and 7-day usage with progress bars and reset timers
+- Per-model breakdown (Opus / Sonnet) when available
+- Extra usage credits and limits
 - Usage history chart with adjustable time range and hover details
 
 ## Data storage
@@ -91,6 +95,10 @@ Sources/ClaudeUsageBar/
 ├── PopoverView.swift            # Main popover UI
 └── MenuBarIconRenderer.swift    # Menu bar icon drawing
 ```
+
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for development setup, testing with the mock server, and submission guidelines.
 
 ## License
 
