@@ -26,8 +26,9 @@ final class AppUpdater: ObservableObject {
             \.canCheckForUpdates,
             options: [.initial, .new]
         ) { [weak self] updater, _ in
-            Task { @MainActor in
-                self?.canCheckForUpdates = updater.canCheckForUpdates
+            let canCheck = updater.canCheckForUpdates
+            Task { @MainActor [weak self] in
+                self?.canCheckForUpdates = canCheck
             }
         }
 
