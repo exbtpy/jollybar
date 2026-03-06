@@ -49,4 +49,27 @@ struct ExtraUsage: Codable {
         case usedCredits = "used_credits"
         case monthlyLimit = "monthly_limit"
     }
+
+    /// API returns credits in minor units (cents); convert to dollars.
+    var usedCreditsAmount: Double? {
+        usedCredits.map { $0 / 100.0 }
+    }
+
+    var monthlyLimitAmount: Double? {
+        monthlyLimit.map { $0 / 100.0 }
+    }
+
+    static let currencyFormatter: NumberFormatter = {
+        let f = NumberFormatter()
+        f.numberStyle = .currency
+        f.currencyCode = "USD"
+        f.maximumFractionDigits = 2
+        f.minimumFractionDigits = 2
+        return f
+    }()
+
+    static func formatUSD(_ amount: Double) -> String {
+        currencyFormatter.string(from: NSNumber(value: amount))
+            ?? String(format: "$%.2f", amount)
+    }
 }
