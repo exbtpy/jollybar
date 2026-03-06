@@ -59,6 +59,19 @@ else
     "$PLUTIL" -remove SUFeedURL "$APP_BUNDLE/Contents/Info.plist" 2>/dev/null || true
 fi
 
+RESOURCE_BUNDLE="$BUILD_DIR/release/${APP_NAME}_${APP_NAME}.bundle"
+if [[ ! -d "$RESOURCE_BUNDLE" ]]; then
+    RESOURCE_BUNDLE="$(find "$BUILD_DIR" -path "*/release/${APP_NAME}_${APP_NAME}.bundle" -type d | head -n 1 || true)"
+fi
+
+if [[ -z "$RESOURCE_BUNDLE" || ! -d "$RESOURCE_BUNDLE" ]]; then
+    echo "Error: SwiftPM resource bundle not found for $APP_NAME"
+    exit 1
+fi
+
+echo "==> Bundling SwiftPM resources..."
+ditto "$RESOURCE_BUNDLE" "$APP_BUNDLE/Contents/Resources/$(basename "$RESOURCE_BUNDLE")"
+
 # --- Compile Asset Catalog (generates Assets.car + AppIcon.icns) ---
 echo "==> Compiling Asset Catalog..."
 actool --compile "$APP_BUNDLE/Contents/Resources" \
