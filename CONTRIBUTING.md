@@ -16,7 +16,7 @@ cd claude-usage-bar
 make app
 ```
 
-This builds the release binary via Swift Package Manager, bundles it as a `.app`, and codesigns it.
+This builds the release binary via Swift Package Manager, bundles it as a `.app`, and codesigns it. The app also embeds Sparkle for update checks.
 
 ## Project structure
 
@@ -42,9 +42,33 @@ Sources/ClaudeUsageBar/
 | `make install` | Build + install to `/Applications` |
 | `make clean` | Remove build artifacts |
 
+## Publishing releases
+
+Releases are tag-driven. Pushing a `v*` tag triggers the GitHub Actions workflow that:
+
+- builds the release zip once
+- uploads that exact zip to the GitHub Release
+- reuses GitHub-generated release notes for both the release body and the Sparkle update entry
+- generates a signed Sparkle appcast from that zip
+- deploys the appcast to GitHub Pages
+
+One-time repository setup:
+
+1. Enable GitHub Pages with source `GitHub Actions`
+2. Add the `SPARKLE_PRIVATE_KEY` repository secret
+
+Local source builds intentionally leave `SUFeedURL` unset, so Sparkle stays disabled unless your packaging flow injects a feed URL. This prevents forks and dev builds from auto-updating to upstream releases.
+
+To export the current private key from your local Keychain:
+
+```sh
+.build/artifacts/sparkle/Sparkle/bin/generate_keys --account claude-usage-bar -x /tmp/claude-usage-bar.sparkle.key
+gh secret set SPARKLE_PRIVATE_KEY < /tmp/claude-usage-bar.sparkle.key
+```
+
 ## Testing with the mock server
 
-A mock API server lets you test the app against different usage scenarios without needing a real Anthropic account:
+A mock API server lets you test usage fetching and error handling against different scenarios without needing a real Anthropic account:
 
 ```sh
 python3 scripts/mock-server.py --scenario extra
@@ -65,6 +89,8 @@ To connect the app to the mock server:
    </dict>
    ```
 3. Rebuild and run the app, then click Refresh.
+
+This only mocks `GET /api/oauth/usage`. The current app still uses Anthropic’s real OAuth/browser flow unless you separately rewire the auth endpoints.
 
 Available scenarios:
 
@@ -97,7 +123,7 @@ Available scenarios:
 - Follow the existing conventions in the codebase
 - SwiftUI views in separate files, one primary view per file
 - Keep `UsageService` as the single source of truth for API state
-- No third-party dependencies — the app is intentionally zero-dep
+- Keep dependencies minimal — Sparkle is the only third-party runtime dependency
 
 ## License
 

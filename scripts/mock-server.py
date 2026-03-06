@@ -21,8 +21,9 @@ Scenarios:
 To point the app at this server, modify UsageService.swift:
     private let usageEndpoint = URL(string: "http://localhost:8080/api/oauth/usage")!
 
-Then restart the app. The mock server also serves a fake /v1/oauth/token
-endpoint so the full OAuth flow can be tested (it accepts any code).
+Then restart the app. This only mocks the usage endpoint for refresh/testing.
+The server also exposes a fake /v1/oauth/token endpoint for manual experiments,
+but the app does not use it unless you explicitly repoint its auth flow too.
 """
 
 import argparse

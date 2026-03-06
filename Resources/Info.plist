@@ -24,5 +24,11 @@
     <true/>
     <key>LSMinimumSystemVersion</key>
     <string>14.0</string>
+    <key>SUEnableAutomaticChecks</key>
+    <true/>
+    <key>SUScheduledCheckInterval</key>
+    <integer>86400</integer>
+    <key>SUPublicEDKey</key>
+    <string>/nLSFkscluh5heQgzxhGudEaa7ifW/0oLRBo+YbqhG4=</string>
 </dict>
 </plist>

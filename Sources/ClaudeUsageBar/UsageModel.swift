@@ -14,6 +14,32 @@ struct UsageResponse: Codable {
         case sevenDaySonnet = "seven_day_sonnet"
         case extraUsage = "extra_usage"
     }
+
+    func reconciled(with previous: UsageResponse?, now: Date = Date()) -> UsageResponse {
+        UsageResponse(
+            fiveHour: fiveHour?.reconciled(
+                with: previous?.fiveHour,
+                resetInterval: 5 * 60 * 60,
+                now: now
+            ),
+            sevenDay: sevenDay?.reconciled(
+                with: previous?.sevenDay,
+                resetInterval: 7 * 24 * 60 * 60,
+                now: now
+            ),
+            sevenDayOpus: sevenDayOpus?.reconciled(
+                with: previous?.sevenDayOpus,
+                resetInterval: 7 * 24 * 60 * 60,
+                now: now
+            ),
+            sevenDaySonnet: sevenDaySonnet?.reconciled(
+                with: previous?.sevenDaySonnet,
+                resetInterval: 7 * 24 * 60 * 60,
+                now: now
+            ),
+            extraUsage: extraUsage
+        )
+    }
 }
 
 struct UsageBucket: Codable {
@@ -26,14 +52,73 @@ struct UsageBucket: Codable {
     }
 
     var resetsAtDate: Date? {
-        guard let resetsAt else { return nil }
-        let formatter = ISO8601DateFormatter()
-        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        if let date = formatter.date(from: resetsAt) {
-            return date
+        Self.parseResetDate(from: resetsAt)
+    }
+
+    func reconciled(with previous: UsageBucket?, resetInterval: TimeInterval, now: Date) -> UsageBucket {
+        guard resetsAtDate == nil else { return self }
+        guard let previousDate = previous?.resetsAtDate else { return self }
+
+        let resolvedDate = Self.nextResetDate(
+            from: previousDate,
+            resetInterval: resetInterval,
+            now: now
+        )
+
+        return UsageBucket(
+            utilization: utilization,
+            resetsAt: Self.resetString(from: resolvedDate)
+        )
+    }
+
+    private static func parseResetDate(from value: String?) -> Date? {
+        guard let value, !value.isEmpty else { return nil }
+
+        let isoFormatters: [ISO8601DateFormatter.Options] = [
+            [.withInternetDateTime, .withFractionalSeconds],
+            [.withInternetDateTime]
+        ]
+
+        for options in isoFormatters {
+            let formatter = ISO8601DateFormatter()
+            formatter.formatOptions = options
+            if let date = formatter.date(from: value) {
+                return date
+            }
         }
+
+        let fallbackPatterns = [
+            "yyyy-MM-dd'T'HH:mm:ss.SSSSSS",
+            "yyyy-MM-dd'T'HH:mm:ss.SSS",
+            "yyyy-MM-dd'T'HH:mm:ss"
+        ]
+
+        for pattern in fallbackPatterns {
+            let formatter = DateFormatter()
+            formatter.locale = Locale(identifier: "en_US_POSIX")
+            formatter.timeZone = TimeZone(secondsFromGMT: 0)
+            formatter.dateFormat = pattern
+            if let date = formatter.date(from: value) {
+                return date
+            }
+        }
+
+        return nil
+    }
+
+    private static func nextResetDate(from previous: Date, resetInterval: TimeInterval, now: Date) -> Date {
+        guard resetInterval > 0 else { return previous }
+        guard previous <= now else { return previous }
+
+        let elapsed = now.timeIntervalSince(previous)
+        let stepCount = floor(elapsed / resetInterval) + 1
+        return previous.addingTimeInterval(stepCount * resetInterval)
+    }
+
+    private static func resetString(from date: Date) -> String {
+        let formatter = ISO8601DateFormatter()
         formatter.formatOptions = [.withInternetDateTime]
-        return formatter.date(from: resetsAt)
+        return formatter.string(from: date)
     }
 }
 

@@ -19,6 +19,7 @@ class UsageService: ObservableObject {
 
     static let defaultPollingMinutes = 30
     static let pollingOptions = [5, 15, 30, 60]
+    nonisolated static let maxBackoffInterval: TimeInterval = 60 * 60
 
     @Published var pollingMinutes: Int {
         didSet {
@@ -29,6 +30,13 @@ class UsageService: ObservableObject {
     }
 
     private var baseInterval: TimeInterval { TimeInterval(pollingMinutes * 60) }
+
+    nonisolated static func backoffInterval(
+        retryAfter: TimeInterval?,
+        currentInterval: TimeInterval
+    ) -> TimeInterval {
+        min(max(retryAfter ?? currentInterval, currentInterval * 2), maxBackoffInterval)
+    }
 
     // OAuth constants
     private let clientId = "9d1c250a-e61b-44d9-88ed-5944d1962f5e"
@@ -222,7 +230,10 @@ class UsageService: ObservableObject {
             if http.statusCode == 429 {
                 let retryAfter = http.value(forHTTPHeaderField: "Retry-After")
                     .flatMap(Double.init) ?? currentInterval
-                currentInterval = min(max(retryAfter, currentInterval * 2), 600)
+                currentInterval = Self.backoffInterval(
+                    retryAfter: retryAfter,
+                    currentInterval: currentInterval
+                )
                 lastError = "Rate limited — backing off to \(Int(currentInterval))s"
                 scheduleTimer()
                 return
@@ -232,7 +243,8 @@ class UsageService: ObservableObject {
                 return
             }
             let decoded = try JSONDecoder().decode(UsageResponse.self, from: data)
-            usage = decoded
+            let reconciled = decoded.reconciled(with: usage)
+            usage = reconciled
             lastError = nil
             lastUpdated = Date()
             historyService?.recordDataPoint(pct5h: pct5h, pct7d: pct7d)

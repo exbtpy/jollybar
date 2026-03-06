@@ -26,8 +26,9 @@ A tiny macOS menu bar app that shows your Claude API usage at a glance. Click it
 - Usage history chart — see how your usage evolves over time (1h / 6h / 1d / 7d / 30d)
 - Hover over the chart to see exact values at any point
 - Configurable polling interval (5m / 15m / 30m / 1h)
+- Built-in update checks via Sparkle
 - Just sign in — OAuth via browser, no API keys to manage
-- Zero dependencies — pure SwiftUI, Swift Charts, and Foundation
+- Minimal dependencies — SwiftUI, Swift Charts, Foundation, and Sparkle for updates
 
 ## Install
 
@@ -54,6 +55,7 @@ make install        # copy to /Applications
 2. Click the icon → **Sign in with Claude** → authorize in your browser
 3. Paste the code back into the app
 4. The icon updates automatically (default: every 30 minutes)
+5. Release builds show **Check for Updates…** in the popover so you can pull newer versions without re-downloading manually
 
 Click the icon anytime to see:
 - 5-hour and 7-day usage with progress bars and reset timers
@@ -80,6 +82,43 @@ make app            # build + create .app bundle
 make zip            # build + bundle + zip for distribution
 make install        # build + install to /Applications
 make clean          # remove build artifacts
+```
+
+## Publishing updates
+
+This repo now uses a tag-driven release flow. Pushing a `v*` tag will:
+
+- build `ClaudeUsageBar.zip`
+- create the GitHub Release
+- reuse GitHub-generated release notes for both the GitHub Release and the Sparkle update entry
+- generate a signed Sparkle `appcast.xml` from that exact zip
+- deploy the appcast to GitHub Pages
+
+Publishing a release is just:
+
+```sh
+git tag v0.0.3
+git push origin v0.0.3
+```
+
+One-time repo setup:
+
+1. Enable GitHub Pages and set the source to `GitHub Actions`.
+2. Add a repository Actions secret named `SPARKLE_PRIVATE_KEY`.
+
+Local source builds intentionally ship with Sparkle disabled unless `SU_FEED_URL` is injected during packaging. This prevents forks and local builds from auto-updating to upstream binaries.
+
+You can export the current Sparkle private key from your local Keychain with:
+
+```sh
+.build/artifacts/sparkle/Sparkle/bin/generate_keys --account claude-usage-bar -x /tmp/claude-usage-bar.sparkle.key
+gh secret set SPARKLE_PRIVATE_KEY < /tmp/claude-usage-bar.sparkle.key
+```
+
+The appcast feed URL used by release builds is:
+
+```text
+https://blimp-labs.github.io/claude-usage-bar/appcast.xml
 ```
 
 ### Project structure

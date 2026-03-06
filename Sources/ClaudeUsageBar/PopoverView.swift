@@ -4,6 +4,7 @@ import ServiceManagement
 struct PopoverView: View {
     @ObservedObject var service: UsageService
     @ObservedObject var historyService: UsageHistoryService
+    @ObservedObject var appUpdater: AppUpdater
     @AppStorage("launchAtLoginAsked") private var launchAtLoginAsked = false
     @State private var showLaunchPrompt = false
 
@@ -109,6 +110,13 @@ struct PopoverView: View {
                 .font(.caption)
         }
 
+        if let updaterError = appUpdater.lastError {
+            Divider()
+            Label(updaterError, systemImage: "arrow.triangle.2.circlepath.circle")
+                .foregroundStyle(.red)
+                .font(.caption)
+        }
+
         Divider()
 
         HStack(spacing: 12) {
@@ -121,27 +129,36 @@ struct PopoverView: View {
             Text("Polling every")
                 .font(.caption)
                 .foregroundStyle(.secondary)
-                
-            Picker("", selection: $service.pollingMinutes) {
+
+            Menu {
                 ForEach(UsageService.pollingOptions, id: \.self) { mins in
-                    Text(mins < 60 ? "\(mins)m" : "\(mins / 60)h").tag(mins)
+                    Button {
+                        service.pollingMinutes = mins
+                    } label: {
+                        if mins == service.pollingMinutes {
+                            Label(pollingOptionLabel(for: mins), systemImage: "checkmark")
+                        } else {
+                            Text(pollingOptionLabel(for: mins))
+                        }
+                    }
                 }
+            } label: {
+                Text(localizedPollingInterval(for: service.pollingMinutes, locale: .autoupdatingCurrent))
             }
-            .pickerStyle(.menu)
             .controlSize(.mini)
-            .frame(width: 60)
+            .fixedSize()
             .help("Polling interval")
         }
 
         HStack(spacing: 12) {
-          Toggle("Launch at Login", isOn: Binding(
-              get: { SMAppService.mainApp.status == .enabled },
-              set: { setLaunchAtLogin($0) }
-          ))
-          .toggleStyle(.switch)
-          .controlSize(.mini)
-          .font(.caption)
-          .foregroundStyle(.secondary)
+            Toggle("Launch at Login", isOn: Binding(
+                get: { SMAppService.mainApp.status == .enabled },
+                set: { setLaunchAtLogin($0) }
+            ))
+            .toggleStyle(.switch)
+            .controlSize(.mini)
+            .font(.caption)
+            .foregroundStyle(.secondary)
 
             Spacer()
             Button("Refresh") {
@@ -149,6 +166,14 @@ struct PopoverView: View {
             }
             .buttonStyle(.borderless)
             .font(.caption)
+            if appUpdater.isConfigured {
+                Button("Check for Updates…") {
+                    appUpdater.checkForUpdates()
+                }
+                .buttonStyle(.borderless)
+                .font(.caption)
+                .disabled(!appUpdater.canCheckForUpdates)
+            }
             Button("Sign Out") { service.signOut() }
                 .buttonStyle(.borderless)
                 .font(.caption)
@@ -240,9 +265,9 @@ private struct ExtraUsageRow: View {
         VStack(alignment: .leading, spacing: 4) {
             Text("Extra Usage")
                 .font(.subheadline)
-            if let used = extra.usedCredits, let limit = extra.monthlyLimit {
+            if let used = extra.usedCreditsAmount, let limit = extra.monthlyLimitAmount {
                 HStack {
-                    Text(String(format: "$%.2f / $%.2f", used, limit))
+                    Text("\(ExtraUsage.formatUSD(used)) / \(ExtraUsage.formatUSD(limit))")
                         .font(.caption)
                         .monospacedDigit()
                     Spacer()

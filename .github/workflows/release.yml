@@ -4,6 +4,10 @@ on:
   push:
     tags: ['v*']
 
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   release:
     runs-on: macos-14
@@ -12,11 +16,100 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Build and zip
-        run: make zip
+      - name: Configure GitHub Pages
+        uses: actions/configure-pages@v5
+
+      - name: Build release archive
+        env:
+          REPOSITORY_NAME: ${{ github.event.repository.name }}
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          owner="$(printf '%s' "$GITHUB_REPOSITORY_OWNER" | tr '[:upper:]' '[:lower:]')"
+          export APP_VERSION="$version"
+          export SU_FEED_URL="https://${owner}.github.io/${REPOSITORY_NAME}/appcast.xml"
+          make zip
+
+      - name: Generate release notes
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p dist/archives dist/site
+
+          gh api "repos/${GITHUB_REPOSITORY}/releases/generate-notes" \
+            --method POST \
+            -f tag_name="${GITHUB_REF_NAME}" \
+            --jq '.body' > dist/release-notes.md
+
+          python3 - <<'PY'
+          import json
+          import os
+          import urllib.request
+
+          with open("dist/release-notes.md", "r", encoding="utf-8") as fh:
+              markdown = fh.read()
+
+          request = urllib.request.Request(
+              "https://api.github.com/markdown",
+              data=json.dumps({
+                  "text": markdown,
+                  "mode": "gfm",
+                  "context": os.environ["GITHUB_REPOSITORY"],
+              }).encode("utf-8"),
+              headers={
+                  "Authorization": f"Bearer {os.environ['GH_TOKEN']}",
+                  "Accept": "application/vnd.github+json",
+                  "X-GitHub-Api-Version": "2022-11-28",
+              },
+              method="POST",
+          )
+
+          with urllib.request.urlopen(request) as response:
+              html = response.read().decode("utf-8")
+
+          with open("dist/archives/ClaudeUsageBar.html", "w", encoding="utf-8") as fh:
+              fh.write(html)
+          PY
 
       - name: Create release
         uses: softprops/action-gh-release@v2
         with:
           files: ClaudeUsageBar.zip
-          generate_release_notes: true
+          body_path: dist/release-notes.md
+
+      - name: Generate Sparkle appcast
+        env:
+          SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
+        run: |
+          if [[ -z "${SPARKLE_PRIVATE_KEY:-}" ]]; then
+            echo "::error::Missing SPARKLE_PRIVATE_KEY repository secret."
+            exit 1
+          fi
+
+          cp ClaudeUsageBar.zip dist/archives/ClaudeUsageBar.zip
+
+          printf '%s' "$SPARKLE_PRIVATE_KEY" | \
+            .build/artifacts/sparkle/Sparkle/bin/generate_appcast \
+              dist/archives \
+              --ed-key-file - \
+              --download-url-prefix "https://github.com/${GITHUB_REPOSITORY}/releases/download/${GITHUB_REF_NAME}/" \
+              --maximum-deltas 0 \
+              -o dist/site/appcast.xml
+
+      - name: Upload appcast for GitHub Pages
+        uses: actions/upload-pages-artifact@v4
+        with:
+          path: dist/site
+
+  deploy_appcast:
+    needs: release
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy appcast
+        id: deployment
+        uses: actions/deploy-pages@v4
