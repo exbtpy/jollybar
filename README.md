@@ -97,8 +97,8 @@ This repo now uses a tag-driven release flow. Pushing a `v*` tag will:
 Publishing a release is just:
 
 ```sh
-git tag v0.0.3
-git push origin v0.0.3
+git tag v0.0.4
+git push origin v0.0.4
 ```
 
 One-time repo setup:
@@ -132,7 +132,28 @@ Sources/ClaudeUsageBar/
 ├── UsageHistoryService.swift    # Persistence, downsampling
 ├── UsageChartView.swift         # Swift Charts trajectory view
 ├── PopoverView.swift            # Main popover UI
-└── MenuBarIconRenderer.swift    # Menu bar icon drawing
+├── MenuBarIconRenderer.swift    # Menu bar icon drawing
+├── PollingOptionFormatter.swift # Polling interval display labels
+├── AppUpdater.swift             # Sparkle update integration
+└── Resources/
+    ├── claude-logo.png          # Pre-rendered menu bar logo (512px)
+    └── en.lproj/Localizable.strings
+
+Tests/ClaudeUsageBarTests/
+├── UsageServiceTests.swift
+├── UsageModelTests.swift
+└── PollingOptionFormatterTests.swift
+
+Resources/                       # App bundle resources (not SwiftPM)
+├── Info.plist
+├── Assets.xcassets/             # App icon
+├── claude-logo.svg              # Source SVG for menu bar logo
+└── icon.png
+
+scripts/
+├── build.sh                     # Build + bundle + codesign
+├── generate-logo-png.swift      # Regenerate logo PNG from SVG
+└── mock-server.py               # Local mock API for development
 ```
 
 ## Contributing
