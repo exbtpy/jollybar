@@ -39,7 +39,9 @@ Sources/ClaudeUsageBar/
 | `make build` | Release build via `swift build` |
 | `make app` | Build + create `.app` bundle |
 | `make zip` | Build + bundle + zip, then verify the release artifact |
-| `make verify-release` | Inspect the packaged zip artifact for required resources/frameworks |
+| `make dmg` | Build + bundle + drag-to-Applications disk image, then verify it |
+| `make release-artifacts` | Build once, then create and verify both ZIP and DMG artifacts |
+| `make verify-release` | Inspect the packaged ZIP and DMG artifacts for required resources/frameworks |
 | `make install` | Build + install to `/Applications` |
 | `make clean` | Remove build artifacts |
 
@@ -47,9 +49,10 @@ Sources/ClaudeUsageBar/
 
 Releases are tag-driven. Pushing a `v*` tag triggers the GitHub Actions workflow that:
 
-- builds the release zip once
-- verifies the extracted zip contains the expected app bundle resources before publishing
-- uploads that exact zip to the GitHub Release
+- builds the release app bundle once
+- produces both a ZIP (for Sparkle) and a DMG (for manual drag-to-Applications installs)
+- verifies the packaged artifacts before publishing
+- uploads those exact artifacts to the GitHub Release
 - reuses GitHub-generated release notes for both the release body and the Sparkle update entry
 - generates a signed Sparkle appcast from that zip
 - deploys the appcast to GitHub Pages

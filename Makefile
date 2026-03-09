@@ -1,4 +1,4 @@
-.PHONY: build app zip verify-release install clean
+.PHONY: build app zip dmg release-artifacts verify-release install clean
 
 build:
 	cd macos && swift build -c release
@@ -10,8 +10,18 @@ zip:
 	bash macos/scripts/build.sh --zip
 	bash macos/scripts/verify-release.sh macos/ClaudeUsageBar.zip
 
+dmg:
+	bash macos/scripts/build.sh --dmg
+	bash macos/scripts/verify-release.sh macos/ClaudeUsageBar.dmg
+
+release-artifacts:
+	bash macos/scripts/build.sh --skip-build --zip --dmg
+	bash macos/scripts/verify-release.sh macos/ClaudeUsageBar.zip
+	bash macos/scripts/verify-release.sh macos/ClaudeUsageBar.dmg
+
 verify-release:
-	bash macos/scripts/verify-release.sh
+	bash macos/scripts/verify-release.sh macos/ClaudeUsageBar.zip
+	if [ -f macos/ClaudeUsageBar.dmg ]; then bash macos/scripts/verify-release.sh macos/ClaudeUsageBar.dmg; fi
 
 install: app
 	rm -rf /Applications/ClaudeUsageBar.app
@@ -19,4 +29,4 @@ install: app
 
 clean:
 	cd macos && swift package clean
-	rm -rf macos/ClaudeUsageBar.app macos/ClaudeUsageBar.zip
+	rm -rf macos/ClaudeUsageBar.app macos/ClaudeUsageBar.zip macos/ClaudeUsageBar.dmg
