@@ -40,4 +40,13 @@ final class PollingOptionFormatterTests: XCTestCase {
         XCTAssertFalse(isDiscouragedPollingOption(30))
         XCTAssertFalse(isDiscouragedPollingOption(60))
     }
+
+    func testDiscouragedPollingOptionsFallBackWhenResourceBundleIsUnavailable() {
+        let locale = Locale(identifier: "en_US_POSIX")
+
+        XCTAssertEqual(
+            pollingOptionLabel(for: 5, locale: locale, resourceBundle: nil),
+            "5m (not recommended)"
+        )
+    }
 }

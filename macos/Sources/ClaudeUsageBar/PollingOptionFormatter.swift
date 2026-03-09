@@ -4,18 +4,25 @@ func isDiscouragedPollingOption(_ minutes: Int) -> Bool {
     minutes == 5 || minutes == 15
 }
 
-func pollingOptionLabel(for minutes: Int, locale: Locale = .autoupdatingCurrent) -> String {
+func pollingOptionLabel(
+    for minutes: Int,
+    locale: Locale = .autoupdatingCurrent,
+    resourceBundle: Bundle? = claudeUsageBarResourceBundle()
+) -> String {
     let interval = localizedPollingInterval(for: minutes, locale: locale)
     guard isDiscouragedPollingOption(minutes) else {
         return interval
     }
 
-    let format = NSLocalizedString(
-        "polling.option.not_recommended",
-        bundle: .module,
-        value: "%@ (not recommended)",
-        comment: "Polling interval option label for refresh intervals that are discouraged"
-    )
+    let fallbackFormat = "%@ (not recommended)"
+    let format = resourceBundle.map {
+        NSLocalizedString(
+            "polling.option.not_recommended",
+            bundle: $0,
+            value: fallbackFormat,
+            comment: "Polling interval option label for refresh intervals that are discouraged"
+        )
+    } ?? fallbackFormat
     return String(format: format, locale: locale, interval)
 }
 

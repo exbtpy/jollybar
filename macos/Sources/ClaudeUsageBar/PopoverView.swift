@@ -1,5 +1,4 @@
 import SwiftUI
-import ServiceManagement
 
 struct PopoverView: View {
     @ObservedObject var service: UsageService
@@ -7,7 +6,6 @@ struct PopoverView: View {
     @ObservedObject var notificationService: NotificationService
     @ObservedObject var appUpdater: AppUpdater
     @AppStorage("setupComplete") private var setupComplete = false
-    @Environment(\.openWindow) private var openWindow
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -145,9 +143,8 @@ struct PopoverView: View {
     }
 
     private var settingsButton: some View {
-        Button("Settings…") {
-            openWindow(id: "settings")
-            NSApp.activate(ignoringOtherApps: true)
+        SettingsLink {
+            Text("Settings…")
         }
         .buttonStyle(.borderless)
         .font(.caption)
@@ -170,12 +167,7 @@ private struct SetupView: View {
 
         Divider()
 
-        Toggle("Launch at Login", isOn: Binding(
-            get: { SMAppService.mainApp.status == .enabled },
-            set: { setLaunchAtLogin($0) }
-        ))
-        .toggleStyle(.switch)
-        .controlSize(.small)
+        LaunchAtLoginToggle(controlSize: .small, useSwitchStyle: true)
 
         Divider()
 
@@ -242,18 +234,6 @@ private struct SetupView: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
-    }
-}
-
-func setLaunchAtLogin(_ enabled: Bool) {
-    do {
-        if enabled {
-            try SMAppService.mainApp.register()
-        } else {
-            try SMAppService.mainApp.unregister()
-        }
-    } catch {
-        // Silently ignore — user can toggle again
     }
 }
 

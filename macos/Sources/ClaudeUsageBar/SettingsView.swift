@@ -8,10 +8,7 @@ struct SettingsWindowContent: View {
     var body: some View {
         Form {
             Section("General") {
-                Toggle("Launch at Login", isOn: Binding(
-                    get: { SMAppService.mainApp.status == .enabled },
-                    set: { setLaunchAtLogin($0) }
-                ))
+                LaunchAtLoginToggle()
 
                 Picker("Polling Interval", selection: Binding(
                     get: { service.pollingMinutes },
@@ -56,7 +53,124 @@ struct SettingsWindowContent: View {
         .formStyle(.grouped)
         .frame(width: 400)
         .fixedSize(horizontal: false, vertical: true)
+        .onAppear {
+            focusSettingsWindow()
+        }
     }
+}
+
+@MainActor
+private func focusSettingsWindow() {
+    DispatchQueue.main.async {
+        NSApp.activate(ignoringOtherApps: true)
+        if let window = NSApp.windows.last(where: { $0.isVisible && $0.canBecomeKey }) {
+            window.makeKeyAndOrderFront(nil)
+            window.orderFrontRegardless()
+        }
+    }
+}
+
+struct LaunchAtLoginToggle: View {
+    @StateObject private var model: LaunchAtLoginModel
+    private let controlSize: ControlSize
+    private let useSwitchStyle: Bool
+
+    init(
+        controlSize: ControlSize = .regular,
+        useSwitchStyle: Bool = false,
+        bundleURL: URL = Bundle.main.bundleURL
+    ) {
+        _model = StateObject(
+            wrappedValue: LaunchAtLoginModel(bundleURL: bundleURL)
+        )
+        self.controlSize = controlSize
+        self.useSwitchStyle = useSwitchStyle
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            toggle
+
+            if let message = model.message {
+                Text(message)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var toggle: some View {
+        let baseToggle = Toggle("Launch at Login", isOn: Binding(
+            get: { model.isEnabled },
+            set: { model.setEnabled($0) }
+        ))
+        .disabled(!model.isSupported)
+        .controlSize(controlSize)
+
+        if useSwitchStyle {
+            baseToggle.toggleStyle(.switch)
+        } else {
+            baseToggle
+        }
+    }
+}
+
+@MainActor
+final class LaunchAtLoginModel: ObservableObject {
+    @Published private(set) var isEnabled = false
+    @Published private(set) var isSupported: Bool
+    @Published private(set) var message: String?
+
+    init(bundleURL: URL = Bundle.main.bundleURL) {
+        isSupported = supportsLaunchAtLoginManagement(appURL: bundleURL)
+
+        guard isSupported else {
+            message = "Install the app in Applications to manage launch at login."
+            return
+        }
+
+        isEnabled = SMAppService.mainApp.status == .enabled
+    }
+
+    func setEnabled(_ enabled: Bool) {
+        guard isSupported else { return }
+
+        do {
+            if enabled {
+                try SMAppService.mainApp.register()
+            } else {
+                try SMAppService.mainApp.unregister()
+            }
+            isEnabled = enabled
+            message = nil
+        } catch {
+            isEnabled = SMAppService.mainApp.status == .enabled
+            message = "Could not update launch at login."
+        }
+    }
+}
+
+func supportsLaunchAtLoginManagement(
+    appURL: URL = Bundle.main.bundleURL,
+    installDirectories: [URL] = launchAtLoginInstallDirectories()
+) -> Bool {
+    let normalizedAppURL = appURL.resolvingSymlinksInPath().standardizedFileURL
+
+    return installDirectories.contains { directory in
+        let normalizedDirectory = directory.resolvingSymlinksInPath().standardizedFileURL
+        let directoryPath = normalizedDirectory.path
+        let appPath = normalizedAppURL.path
+
+        return appPath == directoryPath || appPath.hasPrefix(directoryPath + "/")
+    }
+}
+
+func launchAtLoginInstallDirectories(fileManager: FileManager = .default) -> [URL] {
+    [
+        URL(fileURLWithPath: "/Applications", isDirectory: true),
+        fileManager.homeDirectoryForCurrentUser.appending(path: "Applications", directoryHint: .isDirectory)
+    ]
 }
 
 private struct ThresholdSlider: View {
