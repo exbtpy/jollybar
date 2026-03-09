@@ -33,7 +33,7 @@ struct ClaudeUsageBarApp: App {
         }
         .menuBarExtraStyle(.window)
 
-        Window("Settings", id: "settings") {
+        Settings {
             SettingsWindowContent(
                 service: service,
                 notificationService: notificationService
