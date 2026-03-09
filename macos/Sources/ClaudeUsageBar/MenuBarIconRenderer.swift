@@ -110,25 +110,9 @@ private func drawDashedBar(x: CGFloat, y: CGFloat, width: CGFloat, height: CGFlo
 // MARK: - Claude logo (pre-rendered 512px template PNG)
 
 private let claudeLogoImage: NSImage? = {
-    // SwiftPM's generated Bundle.module accessor calls fatalError when the
-    // resource bundle isn't next to the executable — which is the case inside
-    // a standard .app bundle (resources live in Contents/Resources/).
-    // Search the likely locations ourselves to avoid the crash.
-    let bundleName = "ClaudeUsageBar_ClaudeUsageBar"
-    let candidates: [URL?] = [
-        // .app bundle: Contents/Resources/<bundle>
-        Bundle.main.url(forResource: bundleName, withExtension: "bundle"),
-        // Next to the executable (SwiftPM development builds)
-        Bundle.main.executableURL?
-            .deletingLastPathComponent()
-            .appendingPathComponent(bundleName + ".bundle"),
-    ]
-
-    for case let url? in candidates {
-        if let bundle = Bundle(url: url),
-           let png = bundle.url(forResource: "claude-logo", withExtension: "png") {
-            return NSImage(contentsOf: png)
-        }
+    if let bundle = claudeUsageBarResourceBundle(),
+       let png = bundle.url(forResource: "claude-logo", withExtension: "png") {
+        return NSImage(contentsOf: png)
     }
     return nil
 }()
