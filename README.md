@@ -34,9 +34,10 @@ A tiny macOS menu bar app that shows your Claude API usage at a glance. Click it
 
 ### Download
 
-1. Download `ClaudeUsageBar.zip` from the [latest release](https://github.com/Blimp-Labs/claude-usage-bar/releases/latest)
-2. Extract and drag `ClaudeUsageBar.app` to `/Applications`
-3. On first launch: right-click the app → **Open** (required for ad-hoc signed apps)
+1. Download `ClaudeUsageBar.dmg` from the [latest release](https://github.com/Blimp-Labs/claude-usage-bar/releases/latest)
+2. Open the disk image and drag `ClaudeUsageBar.app` into `Applications`
+3. Launch the app from `/Applications`
+4. macOS may require right-click → **Open** on first launch
 
 ### Build from source
 
@@ -46,6 +47,7 @@ Requires Xcode 15+ / Swift 5.9+ and macOS 14 (Sonoma) or later.
 git clone https://github.com/Blimp-Labs/claude-usage-bar.git
 cd claude-usage-bar
 make app            # build .app bundle
+make dmg            # build drag-to-Applications disk image
 make install        # copy to /Applications
 ```
 
@@ -80,7 +82,9 @@ History is buffered in memory and flushed to disk every 5 minutes and on app qui
 make build          # release build only
 make app            # build + create .app bundle
 make zip            # build + bundle + zip + verify distribution artifact
-make verify-release # inspect the packaged zip artifact
+make dmg            # build + bundle + DMG + verify distribution artifact
+make release-artifacts  # build once, then create and verify both ZIP and DMG
+make verify-release # inspect the packaged ZIP and DMG artifacts
 make install        # build + install to /Applications
 make clean          # remove build artifacts
 ```
@@ -89,8 +93,9 @@ make clean          # remove build artifacts
 
 This repo now uses a tag-driven release flow. Pushing a `v*` tag will:
 
-- build `ClaudeUsageBar.zip`
-- verify the extracted zip contains the expected app bundle resources and updater framework
+- build the `.app` bundle once
+- produce `ClaudeUsageBar.zip` for Sparkle and `ClaudeUsageBar.dmg` for manual installs
+- verify the packaged artifacts contain the expected app bundle resources and updater framework
 - create the GitHub Release
 - reuse GitHub-generated release notes for both the GitHub Release and the Sparkle update entry
 - generate a signed Sparkle `appcast.xml` from that exact zip
@@ -109,6 +114,8 @@ One-time repo setup:
 2. Add a repository Actions secret named `SPARKLE_PRIVATE_KEY`.
 
 Local source builds intentionally ship with Sparkle disabled unless `SU_FEED_URL` is injected during packaging. This prevents forks and local builds from auto-updating to upstream binaries.
+
+Manual installs should prefer the DMG. The ZIP remains the source of truth for Sparkle updates and appcast generation.
 
 You can export the current Sparkle private key from your local Keychain with:
 
