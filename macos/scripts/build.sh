@@ -8,6 +8,11 @@ BUILD_DIR="$PROJECT_DIR/.build"
 APP_BUNDLE="$PROJECT_DIR/$APP_NAME.app"
 ZIP_PATH="$PROJECT_DIR/$APP_NAME.zip"
 DMG_PATH="$PROJECT_DIR/$APP_NAME.dmg"
+CREATE_DMG_VERSION="v1.2.3"
+CREATE_DMG_TARBALL_URL="https://github.com/create-dmg/create-dmg/archive/refs/tags/${CREATE_DMG_VERSION}.tar.gz"
+DMG_RESOURCES_DIR="$PROJECT_DIR/Resources/dmg"
+DMG_BACKGROUND_SOURCE="$DMG_RESOURCES_DIR/background.png"
+APP_ICON_SOURCE="$PROJECT_DIR/Resources/AppIcon.icns"
 PLIST_BUDDY="/usr/libexec/PlistBuddy"
 PLUTIL="/usr/bin/plutil"
 CREATE_ZIP=0
@@ -133,27 +138,77 @@ create_zip() {
     echo "==> Done: $ZIP_PATH"
 }
 
+create_applications_alias() {
+    local staging_dir="$1"
+    local icon_script
+    icon_script="$(mktemp "${TMPDIR:-/tmp}/set-applications-alias-icon.XXXXXX.swift")"
+
+    osascript - "$staging_dir" <<'OSA'
+on run argv
+    set destinationFolder to POSIX file (item 1 of argv)
+    set applicationsFolder to POSIX file "/Applications" as alias
+
+    tell application "Finder"
+        make new alias file at destinationFolder to applicationsFolder with properties {name:"Applications"}
+    end tell
+end run
+OSA
+
+    cat > "$icon_script" <<'SWIFT'
+import AppKit
+
+let target = CommandLine.arguments[1]
+let source = CommandLine.arguments[2]
+let icon = NSWorkspace.shared.icon(forFile: source)
+
+guard NSWorkspace.shared.setIcon(icon, forFile: target, options: []) else {
+    fputs("Failed to set custom icon on alias\n", stderr)
+    exit(1)
+}
+SWIFT
+
+    swift "$icon_script" "$staging_dir/Applications" "/Applications"
+    rm -f "$icon_script"
+}
+
 create_dmg() {
     local staging_dir
+    local create_dmg_root
+    local create_dmg_tool
+    local -a create_dmg_args
     staging_dir="$(mktemp -d "${TMPDIR:-/tmp}/claude-usage-bar-dmg.XXXXXX")"
+    create_dmg_root="$(mktemp -d "${TMPDIR:-/tmp}/create-dmg.XXXXXX")"
+    create_dmg_tool="$create_dmg_root/create-dmg"
 
     echo "==> Creating $DMG_PATH..."
     rm -f "$DMG_PATH"
 
+    [[ -f "$DMG_BACKGROUND_SOURCE" ]] || { echo "Error: DMG background not found at $DMG_BACKGROUND_SOURCE"; exit 1; }
+
     ditto "$APP_BUNDLE" "$staging_dir/$APP_NAME.app"
-    ln -s /Applications "$staging_dir/Applications"
-    cat > "$staging_dir/Drag $APP_NAME to Applications.txt" <<EOF
-Drag $APP_NAME.app into the Applications folder alias to install.
-Launch the app from /Applications after copying it over.
-EOF
+    create_applications_alias "$staging_dir"
+    curl -fsSL "$CREATE_DMG_TARBALL_URL" | tar -xzf - -C "$create_dmg_root" --strip-components=1
+    chmod +x "$create_dmg_tool"
 
-    hdiutil create \
-        -volname "$APP_NAME" \
-        -srcfolder "$staging_dir" \
-        -format UDZO \
-        -ov \
-        "$DMG_PATH" > /dev/null
+    create_dmg_args=(
+        "$create_dmg_tool"
+        --volname "$APP_NAME"
+        --background "$DMG_BACKGROUND_SOURCE"
+        --volicon "$APP_ICON_SOURCE"
+        --window-pos 160 140
+        --window-size 680 420
+        --text-size 12
+        --icon-size 96
+        --icon "$APP_NAME.app" 110 225
+        --hide-extension "$APP_NAME.app"
+        --icon "Applications" 385 225
+        --format UDZO
+        --hdiutil-quiet
+    )
 
+    "${create_dmg_args[@]}" "$DMG_PATH" "$staging_dir" > /dev/null
+
+    rm -rf "$create_dmg_root"
     rm -rf "$staging_dir"
     echo "==> Done: $DMG_PATH"
 }

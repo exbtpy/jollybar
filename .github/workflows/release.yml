@@ -27,12 +27,14 @@ jobs:
           owner="$(printf '%s' "$GITHUB_REPOSITORY_OWNER" | tr '[:upper:]' '[:lower:]')"
           export APP_VERSION="$version"
           export SU_FEED_URL="https://${owner}.github.io/${REPOSITORY_NAME}/appcast.xml"
-          make app
+          bash macos/scripts/build.sh
 
       - name: Package and verify release artifacts
         env:
           EXPECT_FEED_URL: '1'
-        run: make release-artifacts
+        run: |
+          bash macos/scripts/build.sh --skip-build --zip --dmg
+          make verify-release
 
       - name: Generate release notes
         env:
