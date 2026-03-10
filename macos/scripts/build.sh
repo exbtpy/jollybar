@@ -15,7 +15,6 @@ DMG_BACKGROUND_SOURCE="$DMG_RESOURCES_DIR/background.png"
 APP_ICON_SOURCE="$PROJECT_DIR/Resources/AppIcon.icns"
 PLIST_BUDDY="/usr/libexec/PlistBuddy"
 PLUTIL="/usr/bin/plutil"
-SIGNING_IDENTITY="${CODESIGN_IDENTITY:--}"
 CREATE_ZIP=0
 CREATE_DMG=0
 SKIP_BUILD=0
@@ -56,23 +55,6 @@ version_to_build_number() {
     fi
 
     printf '%s' "$version"
-}
-
-codesign_bundle() {
-    local target="$1"
-    shift
-
-    local -a args=(
-        --force
-        --sign "$SIGNING_IDENTITY"
-    )
-
-    if [[ "$SIGNING_IDENTITY" != "-" ]]; then
-        args+=(--options runtime)
-    fi
-
-    args+=("$@" "$target")
-    codesign "${args[@]}"
 }
 
 build_app_bundle() {
@@ -134,15 +116,15 @@ build_app_bundle() {
         ditto "$sparkle_framework" "$APP_BUNDLE/Contents/Frameworks/Sparkle.framework"
     fi
 
-    echo "==> Codesigning ($( [[ "$SIGNING_IDENTITY" == "-" ]] && printf 'ad-hoc' || printf '%s' "$SIGNING_IDENTITY" ))..."
+    echo "==> Codesigning (ad-hoc)..."
     if [[ -d "$APP_BUNDLE/Contents/Frameworks/Sparkle.framework" ]]; then
         while IFS= read -r nested_bundle; do
-            codesign_bundle "$nested_bundle"
+            codesign --force --sign - "$nested_bundle"
         done < <(find "$APP_BUNDLE/Contents/Frameworks/Sparkle.framework" \
             \( -name '*.app' -o -name '*.xpc' \) -type d | sort)
-        codesign --force --sign "$SIGNING_IDENTITY" "$APP_BUNDLE/Contents/Frameworks/Sparkle.framework"
+        codesign --force --sign - "$APP_BUNDLE/Contents/Frameworks/Sparkle.framework"
     fi
-    codesign_bundle "$APP_BUNDLE"
+    codesign --force --sign - "$APP_BUNDLE"
 
     echo "==> Built $APP_BUNDLE"
     codesign -v "$APP_BUNDLE"
@@ -223,10 +205,6 @@ create_dmg() {
         --format UDZO
         --hdiutil-quiet
     )
-
-    if [[ "$SIGNING_IDENTITY" != "-" ]]; then
-        create_dmg_args+=(--codesign "$SIGNING_IDENTITY")
-    fi
 
     "${create_dmg_args[@]}" "$DMG_PATH" "$staging_dir" > /dev/null
 

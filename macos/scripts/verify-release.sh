@@ -39,11 +39,6 @@ verify_app_bundle() {
     echo "==> Verifying app signature..."
     codesign -v "$app_bundle"
 
-    if [[ "${EXPECT_GATEKEEPER:-0}" == "1" ]]; then
-        echo "==> Verifying Gatekeeper acceptance..."
-        spctl -a -t exec -vv "$app_bundle"
-    fi
-
     echo "==> Verifying updater metadata..."
     plutil -extract SUPublicEDKey raw "$app_plist" >/dev/null
 
@@ -85,11 +80,6 @@ case "$ARTIFACT_PATH" in
         APP_BUNDLE="$MOUNT_DIR/$APP_NAME.app"
         DMG_BACKGROUND="$MOUNT_DIR/.background/background.png"
         DMG_DS_STORE="$MOUNT_DIR/.DS_Store"
-
-        if [[ "${EXPECT_GATEKEEPER:-0}" == "1" ]]; then
-            echo "==> Verifying Gatekeeper acceptance for disk image..."
-            spctl -a -t open --context context:primary-signature -vv "$ARTIFACT_PATH"
-        fi
 
         echo "==> Mounting $(basename "$ARTIFACT_PATH")..."
         mkdir -p "$MOUNT_DIR"
