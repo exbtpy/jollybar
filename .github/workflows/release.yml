@@ -15,6 +15,7 @@ jobs:
       contents: write
     env:
       REPOSITORY_NAME: ${{ github.event.repository.name }}
+      RELEASE_SIGNED: ${{ secrets.APPLE_DEVELOPER_IDENTITY != '' && secrets.APPLE_ID != '' && secrets.APPLE_TEAM_ID != '' && secrets.APPLE_APP_SPECIFIC_PASSWORD != '' && '1' || '0' }}
     steps:
       - uses: actions/checkout@v4
 
@@ -22,17 +23,50 @@ jobs:
         uses: actions/configure-pages@v5
 
       - name: Build release app bundle
+        env:
+          APPLE_DEVELOPER_IDENTITY: ${{ secrets.APPLE_DEVELOPER_IDENTITY }}
         run: |
           version="${GITHUB_REF_NAME#v}"
           owner="$(printf '%s' "$GITHUB_REPOSITORY_OWNER" | tr '[:upper:]' '[:lower:]')"
           export APP_VERSION="$version"
           export SU_FEED_URL="https://${owner}.github.io/${REPOSITORY_NAME}/appcast.xml"
-          make app
+          export CODESIGN_IDENTITY="${APPLE_DEVELOPER_IDENTITY:-}"
+          bash macos/scripts/build.sh
+
+      - name: Notarize app bundle
+        if: ${{ env.RELEASE_SIGNED == '1' }}
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+        run: bash macos/scripts/notarize-app.sh macos/ClaudeUsageBar.app
+
+      - name: Warn when release is not Developer ID signed
+        if: ${{ env.RELEASE_SIGNED != '1' }}
+        run: |
+          echo "::warning::Release is being built without Developer ID signing/notarization."
+          echo "::warning::Gatekeeper assessment is skipped and the DMG is for convenience only."
 
       - name: Package and verify release artifacts
         env:
           EXPECT_FEED_URL: '1'
-        run: make release-artifacts
+        run: |
+          bash macos/scripts/build.sh --skip-build --zip --dmg
+          make verify-release
+
+      - name: Notarize DMG
+        if: ${{ env.RELEASE_SIGNED == '1' }}
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+        run: bash macos/scripts/notarize-app.sh macos/ClaudeUsageBar.dmg
+
+      - name: Re-verify notarized release artifacts
+        env:
+          EXPECT_FEED_URL: '1'
+          EXPECT_GATEKEEPER: ${{ env.RELEASE_SIGNED }}
+        run: make verify-release
 
       - name: Generate release notes
         env:

@@ -37,7 +37,7 @@ A tiny macOS menu bar app that shows your Claude API usage at a glance. Click it
 1. Download `ClaudeUsageBar.dmg` from the [latest release](https://github.com/Blimp-Labs/claude-usage-bar/releases/latest)
 2. Open the disk image and drag `ClaudeUsageBar.app` into `Applications`
 3. Launch the app from `/Applications`
-4. macOS may require right-click → **Open** on first launch
+4. If the release is still ad-hoc signed, macOS may require right-click → **Open** on first launch
 
 ### Build from source
 
@@ -94,8 +94,11 @@ make clean          # remove build artifacts
 This repo now uses a tag-driven release flow. Pushing a `v*` tag will:
 
 - build the `.app` bundle once
+- optionally Developer ID sign, notarize, and staple the app when Apple signing secrets are configured
 - produce `ClaudeUsageBar.zip` for Sparkle and `ClaudeUsageBar.dmg` for manual installs
 - verify the packaged artifacts contain the expected app bundle resources and updater framework
+- optionally notarize and staple the DMG when the release is Developer ID signed
+- optionally run Gatekeeper assessment on both the packaged app and DMG when the release is Developer ID signed and notarized
 - create the GitHub Release
 - reuse GitHub-generated release notes for both the GitHub Release and the Sparkle update entry
 - generate a signed Sparkle `appcast.xml` from that exact zip
@@ -112,6 +115,7 @@ One-time repo setup:
 
 1. Enable GitHub Pages and set the source to `GitHub Actions`.
 2. Add a repository Actions secret named `SPARKLE_PRIVATE_KEY`.
+3. Optional but recommended for production releases: add `APPLE_DEVELOPER_IDENTITY`, `APPLE_ID`, `APPLE_TEAM_ID`, and `APPLE_APP_SPECIFIC_PASSWORD` so CI can Developer ID sign, notarize, staple, and Gatekeeper-check the shipped app and DMG.
 
 Local source builds intentionally ship with Sparkle disabled unless `SU_FEED_URL` is injected during packaging. This prevents forks and local builds from auto-updating to upstream binaries.
 

@@ -18,10 +18,7 @@ jobs:
       - name: Run tests
         run: cd macos && swift test
 
-      - name: Build app bundle
-        run: make app
-
-      - name: Package app archives
+      - name: Build app archives
         run: make release-artifacts
 
       - name: Upload ZIP artifact

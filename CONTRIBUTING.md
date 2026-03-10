@@ -50,6 +50,7 @@ Sources/ClaudeUsageBar/
 Releases are tag-driven. Pushing a `v*` tag triggers the GitHub Actions workflow that:
 
 - builds the release app bundle once
+- optionally Developer ID signs, notarizes, and staples the app when Apple signing secrets are configured
 - produces both a ZIP (for Sparkle) and a DMG (for manual drag-to-Applications installs)
 - verifies the packaged artifacts before publishing
 - uploads those exact artifacts to the GitHub Release
@@ -61,6 +62,7 @@ One-time repository setup:
 
 1. Enable GitHub Pages with source `GitHub Actions`
 2. Add the `SPARKLE_PRIVATE_KEY` repository secret
+3. Optional but recommended for production distribution: add `APPLE_DEVELOPER_IDENTITY`, `APPLE_ID`, `APPLE_TEAM_ID`, and `APPLE_APP_SPECIFIC_PASSWORD`
 
 Local source builds intentionally leave `SUFeedURL` unset, so Sparkle stays disabled unless your packaging flow injects a feed URL. This prevents forks and dev builds from auto-updating to upstream releases.
 

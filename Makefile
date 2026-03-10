@@ -15,7 +15,7 @@ dmg:
 	bash macos/scripts/verify-release.sh macos/ClaudeUsageBar.dmg
 
 release-artifacts:
-	bash macos/scripts/build.sh --skip-build --zip --dmg
+	bash macos/scripts/build.sh --zip --dmg
 	bash macos/scripts/verify-release.sh macos/ClaudeUsageBar.zip
 	bash macos/scripts/verify-release.sh macos/ClaudeUsageBar.dmg
 

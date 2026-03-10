@@ -39,12 +39,32 @@ verify_app_bundle() {
     echo "==> Verifying app signature..."
     codesign -v "$app_bundle"
 
+    if [[ "${EXPECT_GATEKEEPER:-0}" == "1" ]]; then
+        echo "==> Verifying Gatekeeper acceptance..."
+        spctl -a -t exec -vv "$app_bundle"
+    fi
+
     echo "==> Verifying updater metadata..."
     plutil -extract SUPublicEDKey raw "$app_plist" >/dev/null
 
     if [[ "${EXPECT_FEED_URL:-0}" == "1" ]]; then
         plutil -extract SUFeedURL raw "$app_plist" >/dev/null
     fi
+}
+
+verify_applications_shortcut() {
+    local shortcut_path="$1"
+
+    if [[ -L "$shortcut_path" ]]; then
+        return
+    fi
+
+    if [[ -f "$shortcut_path" ]] && file "$shortcut_path" | grep -q 'MacOS Alias file'; then
+        return
+    fi
+
+    echo "Error: mounted DMG is missing a valid Applications shortcut"
+    exit 1
 }
 
 case "$ARTIFACT_PATH" in
@@ -63,7 +83,13 @@ case "$ARTIFACT_PATH" in
         ;;
     *.dmg)
         APP_BUNDLE="$MOUNT_DIR/$APP_NAME.app"
-        INSTRUCTIONS_FILE="$MOUNT_DIR/Drag $APP_NAME to Applications.txt"
+        DMG_BACKGROUND="$MOUNT_DIR/.background/background.png"
+        DMG_DS_STORE="$MOUNT_DIR/.DS_Store"
+
+        if [[ "${EXPECT_GATEKEEPER:-0}" == "1" ]]; then
+            echo "==> Verifying Gatekeeper acceptance for disk image..."
+            spctl -a -t open --context context:primary-signature -vv "$ARTIFACT_PATH"
+        fi
 
         echo "==> Mounting $(basename "$ARTIFACT_PATH")..."
         mkdir -p "$MOUNT_DIR"
@@ -71,8 +97,9 @@ case "$ARTIFACT_PATH" in
         DMG_ATTACHED=1
 
         [[ -d "$APP_BUNDLE" ]] || { echo "Error: mounted DMG did not contain $APP_NAME.app"; exit 1; }
-        [[ -L "$MOUNT_DIR/Applications" ]] || { echo "Error: mounted DMG is missing Applications symlink"; exit 1; }
-        [[ -f "$INSTRUCTIONS_FILE" ]] || { echo "Error: mounted DMG is missing drag-and-drop instructions"; exit 1; }
+        verify_applications_shortcut "$MOUNT_DIR/Applications"
+        [[ -f "$DMG_DS_STORE" ]] || { echo "Error: mounted DMG is missing Finder layout metadata"; exit 1; }
+        [[ -f "$DMG_BACKGROUND" ]] || { echo "Error: mounted DMG is missing Finder background artwork"; exit 1; }
 
         verify_app_bundle "$APP_BUNDLE"
         ;;
