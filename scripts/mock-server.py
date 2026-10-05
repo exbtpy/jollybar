@@ -1,41 +1,46 @@
 #!/usr/bin/env python3
 """
-Mock Anthropic usage API server for testing ClaudeUsageBar.
+Mock Grok billing server for Grok Usage Bar.
 
-Usage:
+Serves the undocumented SuperGrok credits payload and the documented
+Management API balance/usage routes, plus a loopback OIDC refresh.
+
     python3 scripts/mock-server.py [--port 8080] [--scenario normal]
 
+Point the app at it (loopback only):
+
+    GROK_USAGE_BAR_AUTH_FILE=/tmp/grok-auth.json \\
+    GROK_USAGE_BAR_PROXY_BASE=http://127.0.0.1:8080/v1 \\
+    GROK_USAGE_BAR_MANAGEMENT_BASE=http://127.0.0.1:8080 \\
+        macos/GrokUsageBar.app/Contents/MacOS/GrokUsageBar
+
+The auth file must be a grok-cli-shaped JSON document. Any non-empty
+``key`` is accepted. Scenario ``stale_then_ok`` returns 401 until the
+bearer is ``refreshed-access``, which ``POST /oidc/token`` issues.
+
 Scenarios:
-    normal          - Moderate usage (5h: 25%, 7d: 45%)
-    high            - Near rate limit (5h: 85%, 7d: 92%)
-    maxed           - Fully rate limited (5h: 100%, 7d: 100%)
-    low             - Barely used (5h: 2%, 7d: 5%)
-    extra           - Extra usage enabled with credits
-    extra_high      - Extra usage near limit
-    per_model       - Per-model breakdown via legacy seven_day_* fields (Opus + Sonnet)
-    model_scoped    - Per-model breakdown via limits[] (Fable 5 + Opus + Sonnet)
-    model_scoped_no_reset
-                    - limits[] entry with a null resets_at (exercises reconciliation)
-    fable_mixed     - Fable 5 via limits[], Opus/Sonnet via legacy seven_day_* fields
-    all_features    - Everything enabled: per-model, extra usage
-    unauthenticated - Returns 401 for all requests
-    rate_limited    - Returns 429 with Retry-After header
-    error           - Returns 500 server error
-
-To point the app at this server, set the endpoint override before launching it:
-    CLAUDE_USAGE_BAR_USAGE_ENDPOINT=http://127.0.0.1:8080/api/oauth/usage \
-        macos/ClaudeUsageBar.app/Contents/MacOS/ClaudeUsageBar
-
-Only loopback hosts are honoured. This only mocks the usage endpoint for refresh/testing.
-The server also exposes a fake /v1/oauth/token endpoint for manual experiments,
-but the app does not use it unless you explicitly repoint its auth flow too.
+    normal                  42% weekly, products, extra credits
+    high                    92% weekly
+    maxed                   100% weekly
+    low                     2% weekly
+    omitted_zero            weekly window, no creditUsagePercent (parser may show 0%)
+    products_without_overall
+                            product percents and no overall percent
+    string_cents            prepaidBalance.val as a string
+    monthly                 monthly period; not the weekly pool
+    unauthenticated         401
+    stale_then_ok           401 until the refreshed bearer arrives
+    rate_limited            429
+    error                   500 with a short error string
+    echo_auth               500 whose error field repeats the bearer (redaction test)
+    malformed               200 with a non-JSON body
 """
 
 import argparse
 import json
-import sys
 from datetime import datetime, timedelta, timezone
-from http.server import HTTPServer, BaseHTTPRequestHandler
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from urllib.parse import urlparse
 
 
 def iso_future(hours=0, days=0):
@@ -43,348 +48,258 @@ def iso_future(hours=0, days=0):
     return dt.strftime("%Y-%m-%dT%H:%M:%S.%f+00:00")
 
 
-def weekly_scoped(display_name, percent, days=5, resets=True):
-    """A model-scoped weekly window, matching a payload captured from the real
-    endpoint on 2026-08-19 (note group is "weekly", not "subscription")."""
-    return {
-        "kind": "weekly_scoped",
-        "group": "weekly",
-        "percent": percent,
-        "severity": "normal",
-        "resets_at": iso_future(days=days) if resets else None,
-        "scope": {"model": {"id": None, "display_name": display_name}, "surface": None},
-        "is_active": True,
+def iso_past(days):
+    dt = datetime.now(timezone.utc) - timedelta(days=days)
+    return dt.strftime("%Y-%m-%dT%H:%M:%S.%f+00:00")
+
+
+def credits(percent, products, prepaid=1250, cap=0, used=0, unified=True, period="weekly"):
+    start = iso_past(4)
+    end = iso_future(days=3)
+    period_type = (
+        "USAGE_PERIOD_TYPE_WEEKLY" if period == "weekly" else "USAGE_PERIOD_TYPE_MONTHLY"
+    )
+    config = {
+        "currentPeriod": {"type": period_type, "start": start, "end": end},
+        "onDemandCap": {"val": cap},
+        "onDemandUsed": {"val": used},
+        "productUsage": products,
+        "isUnifiedBillingUser": unified,
+        "prepaidBalance": {"val": prepaid},
+        "billingPeriodStart": start,
+        "billingPeriodEnd": end,
     }
-
-
-def unscoped_limits(five_hour_pct, seven_day_pct):
-    """The two unscoped entries the real endpoint always sends alongside."""
-    return [
-        {
-            "kind": "session", "group": "session", "percent": five_hour_pct,
-            "severity": "normal", "resets_at": iso_future(hours=3),
-            "scope": None, "is_active": False,
-        },
-        {
-            "kind": "weekly_all", "group": "weekly", "percent": seven_day_pct,
-            "severity": "normal", "resets_at": iso_future(days=4),
-            "scope": None, "is_active": False,
-        },
-    ]
+    if percent is not None:
+        config["creditUsagePercent"] = percent
+    return {"config": config}
 
 
 SCENARIOS = {
-    "normal": {
-        "five_hour": {"utilization": 25.0, "resets_at": iso_future(hours=3)},
-        "seven_day": {"utilization": 45.0, "resets_at": iso_future(days=4)},
-        "seven_day_opus": None,
-        "seven_day_sonnet": None,
-        "seven_day_oauth_apps": None,
-        "seven_day_cowork": None,
-        "iguana_necktie": None,
-        "extra_usage": {
-            "is_enabled": False,
-            "monthly_limit": None,
-            "used_credits": None,
-            "utilization": None,
-        },
-    },
-    "high": {
-        "five_hour": {"utilization": 85.0, "resets_at": iso_future(hours=1)},
-        "seven_day": {"utilization": 92.0, "resets_at": iso_future(days=2)},
-        "seven_day_opus": None,
-        "seven_day_sonnet": None,
-        "seven_day_oauth_apps": None,
-        "seven_day_cowork": None,
-        "iguana_necktie": None,
-        "extra_usage": {
-            "is_enabled": False,
-            "monthly_limit": None,
-            "used_credits": None,
-            "utilization": None,
-        },
-    },
-    "maxed": {
-        "five_hour": {"utilization": 100.0, "resets_at": iso_future(hours=4)},
-        "seven_day": {"utilization": 100.0, "resets_at": iso_future(days=6)},
-        "seven_day_opus": None,
-        "seven_day_sonnet": None,
-        "seven_day_oauth_apps": None,
-        "seven_day_cowork": None,
-        "iguana_necktie": None,
-        "extra_usage": {
-            "is_enabled": False,
-            "monthly_limit": None,
-            "used_credits": None,
-            "utilization": None,
-        },
-    },
-    "low": {
-        "five_hour": {"utilization": 2.0, "resets_at": iso_future(hours=4)},
-        "seven_day": {"utilization": 5.0, "resets_at": iso_future(days=6)},
-        "seven_day_opus": None,
-        "seven_day_sonnet": None,
-        "seven_day_oauth_apps": None,
-        "seven_day_cowork": None,
-        "iguana_necktie": None,
-        "extra_usage": {
-            "is_enabled": False,
-            "monthly_limit": None,
-            "used_credits": None,
-            "utilization": None,
-        },
-    },
-    "extra": {
-        "five_hour": {"utilization": 40.0, "resets_at": iso_future(hours=2)},
-        "seven_day": {"utilization": 60.0, "resets_at": iso_future(days=3)},
-        "seven_day_opus": None,
-        "seven_day_sonnet": None,
-        "seven_day_oauth_apps": None,
-        "seven_day_cowork": None,
-        "iguana_necktie": None,
-        "extra_usage": {
-            "is_enabled": True,
-            "monthly_limit": 28000,
-            "used_credits": 5230,
-            "utilization": 18.68,
-        },
-    },
-    "extra_high": {
-        "five_hour": {"utilization": 95.0, "resets_at": iso_future(hours=1)},
-        "seven_day": {"utilization": 98.0, "resets_at": iso_future(days=1)},
-        "seven_day_opus": None,
-        "seven_day_sonnet": None,
-        "seven_day_oauth_apps": None,
-        "seven_day_cowork": None,
-        "iguana_necktie": None,
-        "extra_usage": {
-            "is_enabled": True,
-            "monthly_limit": 10000,
-            "used_credits": 9450,
-            "utilization": 94.5,
-        },
-    },
-    "per_model": {
-        "five_hour": {"utilization": 35.0, "resets_at": iso_future(hours=3)},
-        "seven_day": {"utilization": 55.0, "resets_at": iso_future(days=4)},
-        "seven_day_opus": {"utilization": 70.0, "resets_at": iso_future(days=5)},
-        "seven_day_sonnet": {"utilization": 15.0, "resets_at": iso_future(days=5)},
-        "seven_day_oauth_apps": None,
-        "seven_day_cowork": None,
-        "iguana_necktie": None,
-        "extra_usage": {
-            "is_enabled": False,
-            "monthly_limit": None,
-            "used_credits": None,
-            "utilization": None,
-        },
-    },
-    "model_scoped": {
-        "five_hour": {"utilization": 35.0, "resets_at": iso_future(hours=3)},
-        "seven_day": {"utilization": 55.0, "resets_at": iso_future(days=4)},
-        "seven_day_opus": None,
-        "seven_day_sonnet": None,
-        "seven_day_oauth_apps": None,
-        "limits": unscoped_limits(35.0, 55.0) + [
-            weekly_scoped("Fable", 48.5),
-            weekly_scoped("Opus", 70.0),
-            weekly_scoped("Sonnet", 15.0),
+    "normal": lambda: credits(
+        42.0,
+        [
+            {"product": "GrokBuild", "usagePercent": 30.0},
+            {"product": "GrokChat", "usagePercent": 8.0},
+            {"product": "GrokImagine", "usagePercent": 4.0},
         ],
-        "extra_usage": {
-            "is_enabled": False,
-            "monthly_limit": None,
-            "used_credits": None,
-            "utilization": None,
-        },
-    },
-    "model_scoped_no_reset": {
-        "five_hour": {"utilization": 35.0, "resets_at": iso_future(hours=3)},
-        "seven_day": {"utilization": 55.0, "resets_at": iso_future(days=4)},
-        "seven_day_opus": None,
-        "seven_day_sonnet": None,
-        "seven_day_oauth_apps": None,
-        "limits": [weekly_scoped("Fable", 52.0, resets=False)],
-        "extra_usage": {
-            "is_enabled": False,
-            "monthly_limit": None,
-            "used_credits": None,
-            "utilization": None,
-        },
-    },
-    "fable_mixed": {
-        "five_hour": {"utilization": 35.0, "resets_at": iso_future(hours=3)},
-        "seven_day": {"utilization": 55.0, "resets_at": iso_future(days=4)},
-        "seven_day_opus": {"utilization": 70.0, "resets_at": iso_future(days=5)},
-        "seven_day_sonnet": {"utilization": 15.0, "resets_at": iso_future(days=5)},
-        "seven_day_oauth_apps": None,
-        "limits": [weekly_scoped("Fable", 48.5)],
-        "extra_usage": {
-            "is_enabled": True,
-            "monthly_limit": 28000,
-            "used_credits": 5230,
-            "utilization": 18.68,
-        },
-    },
-    "all_features": {
-        "five_hour": {"utilization": 62.0, "resets_at": iso_future(hours=2)},
-        "seven_day": {"utilization": 78.0, "resets_at": iso_future(days=3)},
-        "seven_day_opus": None,
-        "seven_day_sonnet": None,
-        "seven_day_oauth_apps": None,
-        "seven_day_cowork": None,
-        "iguana_necktie": None,
-        "limits": [
-            weekly_scoped("Fable", 64.0, days=4),
-            weekly_scoped("Opus", 88.0, days=4),
-            weekly_scoped("Sonnet", 25.0, days=4),
+    ),
+    "high": lambda: credits(
+        92.0,
+        [{"product": "GrokBuild", "usagePercent": 92.0}],
+        prepaid=0,
+    ),
+    "maxed": lambda: credits(
+        100.0,
+        [
+            {"product": "GrokBuild", "usagePercent": 100.0},
+            {"product": "GrokChat"},
         ],
-        "extra_usage": {
-            "is_enabled": True,
-            "monthly_limit": 50000,
-            "used_credits": 12750,
-            "utilization": 25.5,
-        },
+        prepaid=0,
+    ),
+    "low": lambda: credits(2.0, [{"product": "GrokChat", "usagePercent": 2.0}]),
+    "omitted_zero": lambda: credits(
+        None,
+        [{"product": "GrokChat"}],
+        prepaid=0,
+    ),
+    "products_without_overall": lambda: credits(
+        None,
+        [{"product": "PRODUCT_GROK_BUILD", "usagePercent": 61.2}],
+    ),
+    "string_cents": lambda: {
+        "config": {
+            "currentPeriod": {
+                "type": "USAGE_PERIOD_TYPE_WEEKLY",
+                "start": iso_past(1),
+                "end": iso_future(days=6),
+            },
+            "creditUsagePercent": 15,
+            "prepaidBalance": {"val": "2500"},
+            "onDemandCap": {"val": "500"},
+            "onDemandUsed": {"val": "0"},
+            "productUsage": [],
+        }
     },
+    "monthly": lambda: credits(40.0, [], period="monthly"),
+    "malformed": lambda: None,
 }
 
 
-class MockHandler(BaseHTTPRequestHandler):
+class Handler(BaseHTTPRequestHandler):
     scenario = "normal"
+    server_port = 0
+
+    def log_message(self, fmt, *args):
+        # Never log headers. The access line is method and path only.
+        path = urlparse(self.path).path
+        print(f"{self.command} {path}", flush=True)
 
     def do_GET(self):
-        if self.path == "/api/oauth/usage":
-            self.handle_usage()
-        elif self.path.startswith("/scenario/"):
-            self.handle_set_scenario()
-        elif self.path == "/api/oauth/userinfo":
-            self.handle_userinfo()
-        else:
-            self.send_error(404)
+        parsed = urlparse(self.path)
+        path = parsed.path.rstrip("/") or "/"
 
-    def do_POST(self):
-        if self.path == "/v1/oauth/token":
-            self.handle_token()
-        else:
-            self.send_error(404)
-
-    def handle_set_scenario(self):
-        name = self.path.split("/scenario/", 1)[1]
-        all_scenarios = list(SCENARIOS.keys()) + ["unauthenticated", "rate_limited", "error"]
-        if name not in all_scenarios:
-            self.send_response(400)
-            self.send_header("Content-Type", "application/json")
-            self.end_headers()
-            self.wfile.write(json.dumps({"error": f"Unknown scenario: {name}", "available": all_scenarios}).encode())
-            return
-        self.server.scenario = name
-        print(f"\n>>> Scenario switched to: {name}\n")
-        self.send_response(200)
-        self.send_header("Content-Type", "application/json")
-        self.end_headers()
-        self.wfile.write(json.dumps({"scenario": name}).encode())
-
-    def handle_userinfo(self):
-        self.send_response(200)
-        self.send_header("Content-Type", "application/json")
-        self.end_headers()
-        self.wfile.write(json.dumps({"email": "test@example.com", "name": "Test User"}).encode())
-
-    def handle_usage(self):
-        scenario = self.server.scenario
-
-        if scenario == "unauthenticated":
-            self.send_response(401)
-            self.send_header("Content-Type", "application/json")
-            self.end_headers()
-            self.wfile.write(json.dumps({"error": "unauthorized"}).encode())
+        if path.startswith("/scenario/"):
+            name = path.split("/", 2)[2]
+            if name not in SCENARIOS and name not in {
+                "unauthenticated",
+                "stale_then_ok",
+                "rate_limited",
+                "error",
+                "echo_auth",
+            }:
+                self._json(404, {"error": "unknown scenario"})
+                return
+            Handler.scenario = name
+            self._json(200, {"scenario": name})
             return
 
-        if scenario == "rate_limited":
-            self.send_response(429)
-            self.send_header("Content-Type", "application/json")
-            self.send_header("Retry-After", "120")
-            self.end_headers()
-            self.wfile.write(json.dumps({"error": "rate_limited"}).encode())
-            return
-
-        if scenario == "error":
-            self.send_response(500)
-            self.send_header("Content-Type", "application/json")
-            self.end_headers()
-            self.wfile.write(
-                json.dumps({"error": "internal_server_error"}).encode()
+        if path == "/oidc/.well-known/openid-configuration":
+            self._json(
+                200,
+                {
+                    "issuer": f"http://127.0.0.1:{Handler.server_port}/oidc",
+                    "token_endpoint": f"http://127.0.0.1:{Handler.server_port}/oidc/token",
+                },
             )
             return
 
-        data = SCENARIOS.get(scenario, SCENARIOS["normal"])
-        self.send_response(200)
-        self.send_header("Content-Type", "application/json")
-        self.end_headers()
-        self.wfile.write(json.dumps(data, indent=2).encode())
+        if path == "/v1/billing" or path.endswith("/billing"):
+            self._billing()
+            return
 
-    def handle_token(self):
-        # Accept any code and return a fake token
-        self.send_response(200)
-        self.send_header("Content-Type", "application/json")
-        self.end_headers()
-        self.wfile.write(
-            json.dumps(
+        if path.startswith("/v1/billing/teams/") and path.endswith("/prepaid/balance"):
+            if not self._require_management_key():
+                return
+            self._json(200, {"total": {"val": "-1000"}, "changes": []})
+            return
+
+        self._json(404, {"error": "not found"})
+
+    def do_POST(self):
+        path = urlparse(self.path).path.rstrip("/") or "/"
+        if path == "/oidc/token":
+            length = int(self.headers.get("Content-Length", "0") or "0")
+            _ = self.rfile.read(length) if length else b""
+            self._json(
+                200,
                 {
-                    "access_token": "mock-test-token-12345",
-                    "token_type": "bearer",
-                    "scope": "user:profile user:inference",
-                }
-            ).encode()
-        )
+                    "access_token": "refreshed-access",
+                    "refresh_token": "refreshed-refresh",
+                    "expires_in": 3600,
+                    "token_type": "Bearer",
+                },
+            )
+            return
 
-    def log_message(self, format, *args):
-        scenario = self.server.scenario
-        print(f"[{scenario}] {args[0]}")
+        if path.startswith("/v1/billing/teams/") and path.endswith("/usage"):
+            if not self._require_management_key():
+                return
+            length = int(self.headers.get("Content-Length", "0") or "0")
+            if length:
+                self.rfile.read(length)
+            self._json(
+                200,
+                {
+                    "timeSeries": [
+                        {
+                            "group": ["Chat grok"],
+                            "dataPoints": [
+                                {"timestamp": "2026-10-01T00:00:00Z", "values": [1.25]},
+                                {"timestamp": "2026-10-02T00:00:00Z", "values": [0.25]},
+                            ],
+                        }
+                    ],
+                    "limitReached": False,
+                },
+            )
+            return
+
+        self._json(404, {"error": "not found"})
+
+    def _billing(self):
+        scenario = Handler.scenario
+        auth = self.headers.get("Authorization", "")
+
+        if scenario == "unauthenticated":
+            self._json(401, {"error": "unauthorized"})
+            return
+        if scenario == "stale_then_ok" and auth != "Bearer refreshed-access":
+            self._json(401, {"error": "unauthorized"})
+            return
+        if scenario == "rate_limited":
+            body = json.dumps({"error": "rate limited"}).encode("utf-8")
+            self.send_response(429)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Retry-After", "1")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+            return
+        if scenario == "error":
+            self._json(500, {"error": "billing unavailable"})
+            return
+        if scenario == "echo_auth":
+            token = auth[7:].strip() if auth.startswith("Bearer ") else ""
+            self._json(500, {"error": f"bad {token}"})
+            return
+        if scenario == "malformed":
+            body = b"not-json"
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+            return
+
+        if not auth.startswith("Bearer ") or len(auth) <= len("Bearer "):
+            self._json(401, {"error": "unauthorized"})
+            return
+
+        payload = SCENARIOS.get(scenario, SCENARIOS["normal"])()
+        self._json(200, payload)
+
+    def _require_management_key(self):
+        auth = self.headers.get("Authorization", "")
+        if not auth.startswith("Bearer ") or len(auth) <= len("Bearer "):
+            self._json(401, {"error": "unauthorized"})
+            return False
+        return True
+
+    def _json(self, status, payload):
+        body = json.dumps(payload).encode("utf-8")
+        self.send_response(status)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Mock Anthropic usage API server")
-    parser.add_argument(
-        "--port", type=int, default=8080, help="Port to listen on (0 picks a free one)"
-    )
-    parser.add_argument(
-        "--scenario",
-        default="normal",
-        choices=list(SCENARIOS.keys())
-        + ["unauthenticated", "rate_limited", "error"],
-        help="Response scenario",
-    )
+    parser = argparse.ArgumentParser(description="Mock Grok usage endpoints")
+    parser.add_argument("--port", type=int, default=8080)
+    parser.add_argument("--scenario", default="normal")
     args = parser.parse_args()
-
-    server = HTTPServer(("127.0.0.1", args.port), MockHandler)
-    server.scenario = args.scenario
-
-    # Report the bound port, not the requested one: --port 0 picks a free port,
-    # which lets callers (e.g. the integration tests) run without racing.
-    port = server.server_address[1]
-
-    print(f"Mock server running on http://127.0.0.1:{port}", flush=True)
-    print(f"Scenario: {args.scenario}")
-    print()
-    print("Available scenarios:")
-    for name in list(SCENARIOS.keys()) + ["unauthenticated", "rate_limited", "error"]:
-        print(f"  --scenario {name}")
-    print()
-    print("Switch scenario at runtime:")
-    print(f"  curl http://127.0.0.1:{port}/scenario/high")
-    print(f"  curl http://127.0.0.1:{port}/scenario/low")
-    print()
-    print("Test notification flow:")
-    print(f"  1. Point app at http://127.0.0.1:{port}")
-    print(f"  2. Start with: --scenario low")
-    print(f"  3. Wait for one poll, then: curl http://127.0.0.1:{port}/scenario/high")
-    print(f"  4. Next poll should trigger a notification")
-    print()
-
+    known = set(SCENARIOS) | {
+        "unauthenticated",
+        "stale_then_ok",
+        "rate_limited",
+        "error",
+        "echo_auth",
+    }
+    if args.scenario not in known:
+        parser.error(f"unknown scenario {args.scenario}")
+    Handler.scenario = args.scenario
+    server = ThreadingHTTPServer(("127.0.0.1", args.port), Handler)
+    Handler.server_port = server.server_address[1]
+    print(
+        f"Mock Grok usage server running on http://127.0.0.1:{Handler.server_port}",
+        flush=True,
+    )
     try:
         server.serve_forever()
     except KeyboardInterrupt:
-        print("\nShutting down.")
+        pass
+    finally:
         server.server_close()
 
 

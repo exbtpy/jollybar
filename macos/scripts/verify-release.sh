@@ -3,9 +3,9 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
-APP_NAME="ClaudeUsageBar"
+APP_NAME="GrokUsageBar"
 ARTIFACT_PATH="${1:-$PROJECT_DIR/$APP_NAME.zip}"
-TMP_DIR="$(mktemp -d "${TMPDIR:-/tmp}/claude-usage-bar-release.XXXXXX")"
+TMP_DIR="$(mktemp -d "${TMPDIR:-/tmp}/grok-usage-bar-release.XXXXXX")"
 MOUNT_DIR="$TMP_DIR/mount"
 DMG_ATTACHED=0
 
@@ -32,7 +32,6 @@ verify_app_bundle() {
     [[ -f "$app_plist" ]] || { echo "Error: missing Info.plist"; exit 1; }
     [[ -d "$resource_bundle" ]] || { echo "Error: missing SwiftPM resource bundle"; exit 1; }
     [[ -f "$resource_bundle/Info.plist" ]] || { echo "Error: missing resource bundle Info.plist"; exit 1; }
-    [[ -f "$resource_bundle/claude-logo.png" ]] || { echo "Error: missing packaged logo resource"; exit 1; }
     [[ -f "$resource_bundle/en.lproj/Localizable.strings" ]] || { echo "Error: missing packaged localization resource"; exit 1; }
     [[ -d "$sparkle_framework" ]] || { echo "Error: missing Sparkle.framework"; exit 1; }
 
@@ -53,10 +52,22 @@ verify_app_bundle() {
     fi
 
     echo "==> Verifying updater metadata..."
-    plutil -extract SUPublicEDKey raw "$app_plist" >/dev/null
+    # Sparkle is unconfigured unless a release build opted in. A feed that
+    # points at the upstream Claude Usage Bar appcast is always rejected.
+    feed_url="$(plutil -extract SUFeedURL raw "$app_plist" 2>/dev/null || true)"
+    feed_lower="$(printf '%s' "$feed_url" | tr '[:upper:]' '[:lower:]')"
+    case "$feed_lower" in
+        *blimp-labs*|*claude-usage-bar*)
+            echo "Error: SUFeedURL points at the upstream Claude Usage Bar appcast."
+            exit 1
+            ;;
+    esac
 
     if [[ "${EXPECT_FEED_URL:-0}" == "1" ]]; then
-        plutil -extract SUFeedURL raw "$app_plist" >/dev/null
+        [[ -n "$feed_url" ]] || { echo "Error: expected SUFeedURL"; exit 1; }
+    elif [[ -n "$feed_url" ]]; then
+        echo "Error: this build embedded SUFeedURL=$feed_url but Sparkle should stay unconfigured."
+        exit 1
     fi
 }
 

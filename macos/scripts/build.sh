@@ -3,7 +3,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
-APP_NAME="ClaudeUsageBar"
+APP_NAME="GrokUsageBar"
 BUILD_DIR="$PROJECT_DIR/.build"
 APP_BUNDLE="$PROJECT_DIR/$APP_NAME.app"
 ZIP_PATH="$PROJECT_DIR/$APP_NAME.zip"
@@ -93,7 +93,19 @@ build_app_bundle() {
     "$PLIST_BUDDY" -c "Set :CFBundleShortVersionString $app_version" "$APP_BUNDLE/Contents/Info.plist"
     "$PLIST_BUDDY" -c "Set :CFBundleVersion $app_build" "$APP_BUNDLE/Contents/Info.plist"
 
+    # The template ships with no Ed25519 key. Drop one if it ever reappears so
+    # a build cannot trust the upstream appcast's public key.
+    "$PLUTIL" -remove SUPublicEDKey "$APP_BUNDLE/Contents/Info.plist" 2>/dev/null || true
+
     if [[ -n "${SU_FEED_URL:-}" ]]; then
+        local feed_lower
+        feed_lower="$(printf '%s' "$SU_FEED_URL" | tr '[:upper:]' '[:lower:]')"
+        case "$feed_lower" in
+            *blimp-labs*|*claude-usage-bar*)
+                echo "Error: refusing SU_FEED_URL that points at the upstream Claude Usage Bar appcast."
+                exit 1
+                ;;
+        esac
         "$PLUTIL" -replace SUFeedURL -string "$SU_FEED_URL" "$APP_BUNDLE/Contents/Info.plist"
     else
         "$PLUTIL" -remove SUFeedURL "$APP_BUNDLE/Contents/Info.plist" 2>/dev/null || true
@@ -188,7 +200,7 @@ create_dmg() {
     local create_dmg_root
     local create_dmg_tool
     local -a create_dmg_args
-    staging_dir="$(mktemp -d "${TMPDIR:-/tmp}/claude-usage-bar-dmg.XXXXXX")"
+    staging_dir="$(mktemp -d "${TMPDIR:-/tmp}/grok-usage-bar-dmg.XXXXXX")"
     create_dmg_root="$(mktemp -d "${TMPDIR:-/tmp}/create-dmg.XXXXXX")"
     create_dmg_tool="$create_dmg_root/create-dmg"
 

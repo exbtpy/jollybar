@@ -16,7 +16,7 @@ class UsageHistoryService: ObservableObject {
 
     private static var defaultHistoryFileURL: URL {
         let dir = FileManager.default.homeDirectoryForCurrentUser
-            .appendingPathComponent(".config/claude-usage-bar", isDirectory: true)
+            .appendingPathComponent(".config/grok-usage-bar", isDirectory: true)
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         return dir.appendingPathComponent("history.json")
     }
@@ -62,8 +62,8 @@ class UsageHistoryService: ObservableObject {
 
     // MARK: - Record
 
-    func recordDataPoint(pct5h: Double, pct7d: Double) {
-        let point = UsageDataPoint(pct5h: pct5h, pct7d: pct7d)
+    func recordDataPoint(pctWeekly: Double) {
+        let point = UsageDataPoint(pctWeekly: pctWeekly)
         history.dataPoints.append(point)
         isDirty = true
         startFlushTimerIfNeeded()
@@ -143,13 +143,11 @@ class UsageHistoryService: ObservableObject {
 
         return buckets.compactMap { bucket -> UsageDataPoint? in
             guard !bucket.isEmpty else { return nil }
-            let avgPct5h = bucket.map(\.pct5h).reduce(0, +) / Double(bucket.count)
-            let avgPct7d = bucket.map(\.pct7d).reduce(0, +) / Double(bucket.count)
+            let avgPctWeekly = bucket.map(\.pctWeekly).reduce(0, +) / Double(bucket.count)
             let avgTimestamp = bucket.map { $0.timestamp.timeIntervalSince1970 }.reduce(0, +) / Double(bucket.count)
             return UsageDataPoint(
                 timestamp: Date(timeIntervalSince1970: avgTimestamp),
-                pct5h: avgPct5h,
-                pct7d: avgPct7d
+                pctWeekly: avgPctWeekly
             )
         }
     }

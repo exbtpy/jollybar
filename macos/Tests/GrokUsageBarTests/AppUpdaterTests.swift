@@ -1,6 +1,6 @@
 import XCTest
 import Sparkle
-@testable import ClaudeUsageBar
+@testable import GrokUsageBar
 
 final class AppUpdaterTests: XCTestCase {
     func testNoUpdateFoundIsNotAnError() {
@@ -103,8 +103,8 @@ final class AppUpdaterTests: XCTestCase {
             domain: SUSparkleErrorDomain,
             code: Int(SUError.runningFromDiskImageError.rawValue),
             userInfo: [
-                NSLocalizedDescriptionKey: "ClaudeUsageBar can't be updated because it was opened from a read-only or a temporary location.",
-                NSLocalizedRecoverySuggestionErrorKey: "Use Finder to copy ClaudeUsageBar to the Applications folder, relaunch it from there, and try again."
+                NSLocalizedDescriptionKey: "GrokUsageBar can't be updated because it was opened from a read-only or a temporary location.",
+                NSLocalizedRecoverySuggestionErrorKey: "Use Finder to copy GrokUsageBar to the Applications folder, relaunch it from there, and try again."
             ]
         )
 

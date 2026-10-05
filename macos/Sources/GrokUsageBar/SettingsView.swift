@@ -5,6 +5,8 @@ struct SettingsWindowContent: View {
     @ObservedObject var service: UsageService
     @ObservedObject var notificationService: NotificationService
     @ObservedObject var appUpdater: AppUpdater
+    @State private var teamID = ""
+    @State private var managementKey = ""
 
     var body: some View {
         Form {
@@ -30,31 +32,55 @@ struct SettingsWindowContent: View {
                 }
 
                 ThresholdSlider(
-                    label: "5-hour window",
-                    value: notificationService.threshold5h,
-                    onChange: { notificationService.setThreshold5h($0) }
-                )
-                ThresholdSlider(
-                    label: "7-day window",
-                    value: notificationService.threshold7d,
-                    onChange: { notificationService.setThreshold7d($0) }
-                )
-                ThresholdSlider(
-                    label: "Extra usage",
-                    value: notificationService.thresholdExtra,
-                    onChange: { notificationService.setThresholdExtra($0) }
+                    label: "Weekly pool",
+                    value: notificationService.thresholdWeekly,
+                    onChange: { notificationService.setThresholdWeekly($0) }
                 )
             }
             .disabled(!notificationService.isAvailable)
 
-            if service.isAuthenticated {
-                Section("Account") {
-                    if let email = service.accountEmail {
+            Section("Grok CLI session") {
+                Text("Usage comes from the grok CLI login in ~/.grok/auth.json. This app does not collect a password or start its own sign-in.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                if let email = service.accountEmail {
+                    LabeledContent("Account") {
                         Text(email)
+                            .textSelection(.enabled)
                     }
-                    Button("Sign Out") {
-                        service.signOut()
+                }
+                Text("To sign in or switch accounts, run grok login in Terminal.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .textSelection(.enabled)
+            }
+
+            Section("Developer API") {
+                Text("Optional. A management key and team ID read console prepaid balance and recent API spend. They do not replace the weekly pool. The key is stored in the Keychain and is not written to the config file.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                TextField("Team ID", text: $teamID)
+                SecureField(service.managementConfigured ? "Management key (saved)" : "Management key", text: $managementKey)
+                HStack {
+                    Button("Save") {
+                        service.saveManagementSettings(teamID: teamID, key: managementKey)
+                        managementKey = ""
                     }
+                    Button("Remove") {
+                        service.clearManagementSettings()
+                        teamID = ""
+                        managementKey = ""
+                    }
+                }
+                if service.managementConfigured {
+                    Text("A management key is saved for this team.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                if let error = service.managementError {
+                    Text(error)
+                        .font(.caption)
+                        .foregroundStyle(.red)
                 }
             }
 
@@ -85,9 +111,10 @@ struct SettingsWindowContent: View {
             }
         }
         .formStyle(.grouped)
-        .frame(width: 400)
+        .frame(width: 440)
         .fixedSize(horizontal: false, vertical: true)
         .onAppear {
+            teamID = service.managementTeamID
             focusSettingsWindow()
         }
     }
@@ -121,9 +148,6 @@ private func focusSettingsWindow() {
 
 struct LaunchAtLoginToggle: View {
     @StateObject private var model: LaunchAtLoginModel
-    /// nil means "inherit whatever the container provides". Forcing a size here
-    /// made this switch a different size from every other control in the
-    /// Settings form, which sets the ambient size for its section.
     private let controlSize: ControlSize?
     private let useSwitchStyle: Bool
 
@@ -169,8 +193,6 @@ struct LaunchAtLoginToggle: View {
     }
 }
 
-/// Applies `.controlSize` only when one was requested, so the default is to
-/// inherit the container's.
 private struct OptionalControlSize: ViewModifier {
     let controlSize: ControlSize?
 
