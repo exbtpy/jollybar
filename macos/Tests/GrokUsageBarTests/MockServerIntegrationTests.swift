@@ -1,4 +1,3 @@
-import Darwin
 import XCTest
 @testable import GrokUsageBar
 
@@ -213,6 +212,11 @@ final class MockServerIntegrationTests: XCTestCase {
     }
 }
 
+private struct MockServerLaunchError: Error, CustomStringConvertible {
+    let description: String
+    init(_ description: String) { self.description = description }
+}
+
 private final class MockServer {
     let port: Int
     private let process: Process
@@ -232,22 +236,69 @@ private final class MockServer {
             throw XCTSkip("mock-server.py not found at \(script.path)")
         }
 
+        let portFile = FileManager.default.temporaryDirectory
+            .appendingPathComponent("grok-mock-port-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: portFile) }
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
-        process.arguments = ["python3", script.path, "--port", "0"]
+        var environment = ProcessInfo.processInfo.environment
+        environment["PYTHONUNBUFFERED"] = "1"
+        process.environment = environment
+        process.arguments = [
+            "python3", "-u", script.path,
+            "--port", "0",
+            "--port-file", portFile.path
+        ]
         let output = Pipe()
+        let errors = Pipe()
         process.standardOutput = output
-        process.standardError = Pipe()
+        process.standardError = errors
         do {
             try process.run()
         } catch {
-            throw XCTSkip("Could not launch python3: \(error.localizedDescription)")
+            throw MockServerLaunchError("Could not launch python3: \(error.localizedDescription)")
         }
-        guard let port = readBoundPort(from: output) else {
-            process.terminate()
-            throw XCTSkip("Mock server did not report a port")
+        guard let port = waitForPort(portFile: portFile, process: process) else {
+            if process.isRunning {
+                process.terminate()
+            }
+            process.waitUntilExit()
+            let stdout = collectedOutput(output)
+            let stderr = collectedOutput(errors)
+            throw MockServerLaunchError(
+                """
+                Mock server did not report a port.
+                stdout: \(stdout)
+                stderr: \(stderr)
+                """
+            )
         }
         return MockServer(port: port, process: process)
+    }
+
+    /// The server writes the bound port to a file. Polling that file avoids
+    /// racing a pipe that never delivered the banner on the macOS runner.
+    private static func waitForPort(portFile: URL, process: Process) -> Int? {
+        let deadline = Date().addingTimeInterval(15)
+        while Date() < deadline {
+            if let text = try? String(contentsOf: portFile, encoding: .utf8) {
+                let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+                if let port = Int(trimmed), port > 0 {
+                    return port
+                }
+            }
+            if !process.isRunning {
+                return nil
+            }
+            Thread.sleep(forTimeInterval: 0.05)
+        }
+        return nil
+    }
+
+    private static func collectedOutput(_ pipe: Pipe) -> String {
+        let data = pipe.fileHandleForReading.availableData
+        let text = String(decoding: data, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
+        return text.isEmpty ? "<empty>" : text
     }
 
     func setScenario(_ name: String) async throws {
@@ -261,46 +312,6 @@ private final class MockServer {
         guard process.isRunning else { return }
         process.terminate()
         process.waitUntilExit()
-    }
-
-    private static func readBoundPort(from pipe: Pipe) -> Int? {
-        let descriptor = pipe.fileHandleForReading.fileDescriptor
-        let flags = fcntl(descriptor, F_GETFL, 0)
-        guard flags != -1, fcntl(descriptor, F_SETFL, flags | O_NONBLOCK) != -1 else {
-            return nil
-        }
-        let deadline = Date().addingTimeInterval(30)
-        var buffered = ""
-        var chunk = [UInt8](repeating: 0, count: 4096)
-        while Date() < deadline {
-            let count = read(descriptor, &chunk, chunk.count)
-            if count > 0 {
-                buffered += String(decoding: chunk[0..<count], as: UTF8.self)
-                if let port = parseBoundPort(from: buffered) {
-                    return port
-                }
-            } else if count == 0 {
-                return nil
-            } else if errno != EAGAIN && errno != EWOULDBLOCK {
-                return nil
-            } else {
-                Thread.sleep(forTimeInterval: 0.02)
-            }
-        }
-        return nil
-    }
-
-    private static func parseBoundPort(from buffered: String) -> Int? {
-        guard let lastNewline = buffered.lastIndex(of: "\n") else { return nil }
-        for line in buffered[..<lastNewline].split(separator: "\n") {
-            guard line.contains("running on"),
-                  let portText = line.split(separator: ":").last,
-                  let port = Int(portText.trimmingCharacters(in: .whitespaces)) else {
-                continue
-            }
-            return port
-        }
-        return nil
     }
 
     /// `#filePath` is `<repo>/macos/Tests/GrokUsageBarTests/<file>.swift`.

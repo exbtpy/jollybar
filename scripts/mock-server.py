@@ -40,6 +40,7 @@ import argparse
 import json
 from datetime import datetime, timedelta, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
 from urllib.parse import urlparse
 
 
@@ -278,6 +279,11 @@ def main():
     parser = argparse.ArgumentParser(description="Mock Grok usage endpoints")
     parser.add_argument("--port", type=int, default=8080)
     parser.add_argument("--scenario", default="normal")
+    parser.add_argument(
+        "--port-file",
+        default=None,
+        help="Write the bound port to this path before serving (used by tests)",
+    )
     args = parser.parse_args()
     known = set(SCENARIOS) | {
         "unauthenticated",
@@ -291,6 +297,12 @@ def main():
     Handler.scenario = args.scenario
     server = ThreadingHTTPServer(("127.0.0.1", args.port), Handler)
     Handler.server_port = server.server_address[1]
+    if args.port_file:
+        port_path = Path(args.port_file)
+        port_path.write_text(f"{Handler.server_port}\n", encoding="utf-8")
+    # A single line, flushed, so a pipe reader can see the port without
+    # waiting for a full block buffer.
+    print(f"PORT {Handler.server_port}", flush=True)
     print(
         f"Mock Grok usage server running on http://127.0.0.1:{Handler.server_port}",
         flush=True,
