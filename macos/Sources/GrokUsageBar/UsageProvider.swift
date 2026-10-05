@@ -350,7 +350,7 @@ struct GrokCLIWeeklyProvider: WeeklyPoolProviding {
         }
         let created = now()
         guard let original = try? Data(contentsOf: authFileURL),
-              let updated = GrokAuthFile.updatedDocument(
+              let rewritten = GrokAuthFile.updatedDocument(
                 data: original,
                 scopeKey: credential.scopeKey,
                 accessToken: accessToken,
@@ -361,12 +361,12 @@ struct GrokCLIWeeklyProvider: WeeklyPoolProviding {
             return .transient("Could not refresh the grok session. Will retry.")
         }
         do {
-            try GrokAuthFile.writeAtomically(updated, to: authFileURL, fileManager: fileManager)
+            try GrokAuthFile.writeAtomically(rewritten, to: authFileURL, fileManager: fileManager)
         } catch {
             return .transient("Could not refresh the grok session. Will retry.")
         }
 
-        let updated = GrokSessionCredential(
+        let refreshed = GrokSessionCredential(
             scopeKey: credential.scopeKey,
             accessToken: accessToken,
             refreshToken: rotatedRefresh,
@@ -378,7 +378,7 @@ struct GrokCLIWeeklyProvider: WeeklyPoolProviding {
             oidcIssuer: credential.oidcIssuer,
             oidcClientId: credential.oidcClientId
         )
-        return .refreshed(updated)
+        return .refreshed(refreshed)
     }
 
     private func secrets(in credential: GrokSessionCredential) -> [String] {
