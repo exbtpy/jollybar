@@ -6,42 +6,17 @@ struct ThresholdAlert: Equatable {
     let pct: Int
 }
 
-/// Pure logic: returns which threshold alerts should fire given a state transition.
-func crossedThresholds(
-    threshold5h: Int,
-    threshold7d: Int,
-    thresholdExtra: Int,
-    previous5h: Double,
-    previous7d: Double,
-    previousExtra: Double,
-    current5h: Double,
-    current7d: Double,
-    currentExtra: Double
-) -> [ThresholdAlert] {
-    var alerts = [ThresholdAlert]()
-
-    if threshold5h > 0 {
-        let t = Double(threshold5h)
-        if current5h >= t && previous5h < t {
-            alerts.append(ThresholdAlert(window: "5-hour", pct: Int(round(current5h))))
-        }
-    }
-
-    if threshold7d > 0 {
-        let t = Double(threshold7d)
-        if current7d >= t && previous7d < t {
-            alerts.append(ThresholdAlert(window: "7-day", pct: Int(round(current7d))))
-        }
-    }
-
-    if thresholdExtra > 0 {
-        let t = Double(thresholdExtra)
-        if currentExtra >= t && previousExtra < t {
-            alerts.append(ThresholdAlert(window: "Extra usage", pct: Int(round(currentExtra))))
-        }
-    }
-
-    return alerts
+/// Fires when the weekly pool percent crosses `threshold` from below.
+/// `previous` and `current` are percentages in the 0...100 range, not fractions.
+func crossedWeeklyThreshold(
+    threshold: Int,
+    previous: Double,
+    current: Double
+) -> ThresholdAlert? {
+    guard threshold > 0 else { return nil }
+    let limit = Double(threshold)
+    guard current >= limit, previous < limit else { return nil }
+    return ThresholdAlert(window: "Weekly", pct: Int(round(current)))
 }
 
 private class NotificationDelegate: NSObject, UNUserNotificationCenterDelegate {
@@ -56,14 +31,10 @@ private class NotificationDelegate: NSObject, UNUserNotificationCenterDelegate {
 
 @MainActor
 class NotificationService: ObservableObject {
-    /// 0 = off, 5–100 = alert when window reaches this %.
-    @Published private(set) var threshold5h: Int
-    @Published private(set) var threshold7d: Int
-    @Published private(set) var thresholdExtra: Int
+    /// 0 = off, 5–100 = alert when the weekly pool reaches this %.
+    @Published private(set) var thresholdWeekly: Int
 
-    private var previousPct5h: Double?
-    private var previousPct7d: Double?
-    private var previousPctExtra: Double?
+    private var previousPercent: Double?
     private let delegate = NotificationDelegate()
 
     /// False when this process cannot use notifications at all, so callers can
@@ -71,33 +42,17 @@ class NotificationService: ObservableObject {
     let isAvailable = supportsUserNotifications()
 
     init() {
-        threshold5h = Self.load("notificationThreshold5h")
-        threshold7d = Self.load("notificationThreshold7d")
-        thresholdExtra = Self.load("notificationThresholdExtra")
+        thresholdWeekly = Self.load("notificationThresholdWeekly")
         if isAvailable {
             UNUserNotificationCenter.current().delegate = delegate
         }
     }
 
-    func setThreshold5h(_ value: Int) {
-        threshold5h = clamp(value)
-        UserDefaults.standard.set(threshold5h, forKey: "notificationThreshold5h")
-        previousPct5h = nil
-        if threshold5h > 0 { requestPermission() }
-    }
-
-    func setThreshold7d(_ value: Int) {
-        threshold7d = clamp(value)
-        UserDefaults.standard.set(threshold7d, forKey: "notificationThreshold7d")
-        previousPct7d = nil
-        if threshold7d > 0 { requestPermission() }
-    }
-
-    func setThresholdExtra(_ value: Int) {
-        thresholdExtra = clamp(value)
-        UserDefaults.standard.set(thresholdExtra, forKey: "notificationThresholdExtra")
-        previousPctExtra = nil
-        if thresholdExtra > 0 { requestPermission() }
+    func setThresholdWeekly(_ value: Int) {
+        thresholdWeekly = clamp(value)
+        UserDefaults.standard.set(thresholdWeekly, forKey: "notificationThresholdWeekly")
+        previousPercent = nil
+        if thresholdWeekly > 0 { requestPermission() }
     }
 
     func requestPermission() {
@@ -108,36 +63,20 @@ class NotificationService: ObservableObject {
         UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { _, _ in }
     }
 
-    func checkAndNotify(pct5h: Double, pct7d: Double, pctExtra: Double) {
-        let current5h = pct5h * 100
-        let current7d = pct7d * 100
-        let currentExtra = pctExtra * 100
+    /// `weeklyFraction` is 0...1, matching the value stored in history.
+    func checkAndNotify(weeklyFraction: Double) {
+        let current = weeklyFraction * 100
+        let previous = previousPercent ?? 0
+        defer { previousPercent = current }
 
-        let prev5h = previousPct5h ?? 0
-        let prev7d = previousPct7d ?? 0
-        let prevExtra = previousPctExtra ?? 0
-
-        defer {
-            previousPct5h = current5h
-            previousPct7d = current7d
-            previousPctExtra = currentExtra
+        guard let alert = crossedWeeklyThreshold(
+            threshold: thresholdWeekly,
+            previous: previous,
+            current: current
+        ) else {
+            return
         }
-
-        let alerts = crossedThresholds(
-            threshold5h: threshold5h,
-            threshold7d: threshold7d,
-            thresholdExtra: thresholdExtra,
-            previous5h: prev5h,
-            previous7d: prev7d,
-            previousExtra: prevExtra,
-            current5h: current5h,
-            current7d: current7d,
-            currentExtra: currentExtra
-        )
-
-        for alert in alerts {
-            sendNotification(window: alert.window, pct: alert.pct)
-        }
+        sendNotification(window: alert.window, pct: alert.pct)
     }
 
     private func sendNotification(window: String, pct: Int) {
@@ -147,7 +86,7 @@ class NotificationService: ObservableObject {
         }
 
         let content = UNMutableNotificationContent()
-        content.title = "Claude Usage"
+        content.title = "Grok Usage"
         content.body = "\(window) usage has reached \(pct)%"
         content.sound = .default
 

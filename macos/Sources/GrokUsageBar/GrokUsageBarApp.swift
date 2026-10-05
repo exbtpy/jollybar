@@ -1,7 +1,7 @@
 import SwiftUI
 
 @main
-struct ClaudeUsageBarApp: App {
+struct GrokUsageBarApp: App {
     @StateObject private var service = UsageService()
     @StateObject private var historyService = UsageHistoryService()
     @StateObject private var notificationService = NotificationService()
@@ -17,11 +17,10 @@ struct ClaudeUsageBarApp: App {
             )
         } label: {
             Image(nsImage: service.isAuthenticated
-                ? renderIcon(pct5h: service.pct5h, pct7d: service.pct7d)
+                ? renderIcon(weeklyFraction: service.weeklyFraction)
                 : renderUnauthenticatedIcon()
             )
                 .task {
-                    // Auto-mark existing users as setup-complete
                     if service.isAuthenticated && !UserDefaults.standard.bool(forKey: "setupComplete") {
                         UserDefaults.standard.set(true, forKey: "setupComplete")
                     }

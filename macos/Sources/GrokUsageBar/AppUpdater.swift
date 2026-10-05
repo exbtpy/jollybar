@@ -49,7 +49,7 @@ final class AppUpdater: ObservableObject {
     init(bundle: Bundle = .main) {
         let feedURL = bundle.object(forInfoDictionaryKey: "SUFeedURL") as? String
         let publicKey = bundle.object(forInfoDictionaryKey: "SUPublicEDKey") as? String
-        self.isConfigured = !(feedURL?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true)
+        self.isConfigured = Self.isUsableUpdateFeed(feedURL)
             && !(publicKey?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true)
 
         let delegate = UpdaterDelegate()
@@ -124,6 +124,23 @@ final class AppUpdater: ObservableObject {
         Int(SUError.installationCanceledError.rawValue),        // 4007
         Int(SUError.installationAuthorizeLaterError.rawValue)   // 4008
     ]
+
+    /// Sparkle stays off unless this build has an https feed that is not the
+    /// upstream Claude Usage Bar appcast, plus a public key for that feed.
+    nonisolated static func isUsableUpdateFeed(_ feed: String?) -> Bool {
+        guard let feed else { return false }
+        let trimmed = feed.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty,
+              let url = URL(string: trimmed),
+              url.scheme?.lowercased() == "https" else {
+            return false
+        }
+        let absolute = trimmed.lowercased()
+        if absolute.contains("blimp-labs") || absolute.contains("claude-usage-bar") {
+            return false
+        }
+        return true
+    }
 
     nonisolated static func describe(_ error: Error?) -> String? {
         guard let error else { return nil }

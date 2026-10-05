@@ -1,173 +1,116 @@
-<p align="center">
-  <img src="macos/Resources/icon.png" width="128" alt="Claude Usage Bar icon">
-</p>
+# Grok Usage Bar
 
-# Claude Usage Bar
+A macOS menu bar app that shows the shared weekly Grok usage pool.
 
-Have you ever found yourself refreshing the Claude usage page, wondering how close you are to hitting your rate limit? Yeah, I've been there too. So I built this.
+This is a fork of [Blimp-Labs/claude-usage-bar](https://github.com/Blimp-Labs/claude-usage-bar) at commit `7232e065b8100f4280c3a26a9fcb6503b73bae15`. The original project is Copyright (c) 2026, Krystian, and remains under the BSD 2-Clause license in `LICENSE`. Upstream history is preserved on `main`.
 
-Now it's just a glimpse away — always sitting at the top of your screen.
+The menu bar shows one bar for the weekly pool. The popover adds the per-product breakdown, the reset countdown, Extra Usage Credits, a history chart, and an optional view of xAI Management API prepaid balance and recent API spend.
 
-<p align="center">
-  <img src="macos/Resources/demo.png" width="400" alt="Claude Usage Bar demo">
-</p>
-
-![macOS 14+](https://img.shields.io/badge/macOS-14%2B-blue)
-![Swift 5.9](https://img.shields.io/badge/Swift-5.9-orange)
-![License](https://img.shields.io/badge/license-BSD--2--Clause-green)
-
-## What it does
-
-A tiny macOS menu bar app that shows your Claude API usage at a glance. Click it for the full picture:
-
-- Menu bar icon with a mini dual-bar showing 5-hour and 7-day utilization
-- Detailed popover with per-window usage, per-model breakdown, and reset timers
-- Extra usage tracking with USD currency display
-- Usage history chart — see how your usage evolves over time (1h / 6h / 1d / 7d / 30d)
-- Hover over the chart to see exact values at any point
-- Configurable polling interval (5m / 15m / 30m / 1h)
-- Built-in update checks via Sparkle
-- Just sign in — OAuth via browser, no API keys to manage
-- Minimal dependencies — SwiftUI, Swift Charts, Foundation, and Sparkle for updates
-
-## Install
-
-### Download
-
-1. Download `ClaudeUsageBar.dmg` from the [latest release](https://github.com/Blimp-Labs/claude-usage-bar/releases/latest)
-2. Open the disk image and drag `ClaudeUsageBar.app` into `Applications`
-3. Launch the app from `/Applications`
-4. macOS may require right-click → **Open** on first launch
-
-### Build from source
+## Build
 
 Requires Xcode 15+ / Swift 5.9+ and macOS 14 (Sonoma) or later.
 
 ```sh
-git clone https://github.com/Blimp-Labs/claude-usage-bar.git
-cd claude-usage-bar
-make app            # build .app bundle
-make dmg            # build drag-to-Applications disk image
-make install        # copy to /Applications
+git clone https://github.com/exbtpy/grok-usage-bar.git
+cd grok-usage-bar
+make app        # build GrokUsageBar.app
+make install    # copy it to /Applications
 ```
 
-## Usage
-
-1. Launch the app — a menu bar icon appears
-2. Click the icon → **Sign in with Claude** → authorize in your browser
-3. Paste the code back into the app
-4. The icon updates automatically (default: every 30 minutes)
-5. Release builds show **Check for Updates…** in the popover so you can pull newer versions without re-downloading manually
-
-Click the icon anytime to see:
-- 5-hour and 7-day usage with progress bars and reset timers
-- Per-model breakdown (Opus / Sonnet) when available
-- Extra usage credits and limits
-- Usage history chart with adjustable time range and hover details
-
-## Data storage
-
-All data is stored locally in `~/.config/claude-usage-bar/`:
-
-| File | Purpose |
-|------|---------|
-| `token` | OAuth access token (permissions: `0600`) |
-| `history.json` | Usage history for the chart (30-day retention) |
-
-History is buffered in memory and flushed to disk every 5 minutes and on app quit. No data is sent anywhere other than the Anthropic API.
-
-## Development
+`make test` is not a target. From `macos/`:
 
 ```sh
-make build          # release build only
-make app            # build + create .app bundle
-make zip            # build + bundle + zip + verify distribution artifact
-make dmg            # build + bundle + DMG + verify distribution artifact
-make release-artifacts  # build once, then create and verify both ZIP and DMG
-make verify-release # inspect the packaged ZIP and DMG artifacts
-make install        # build + install to /Applications
-make clean          # remove build artifacts
+swift test
 ```
 
-## Publishing updates
+## Sign in
 
-This repo now uses a tag-driven release flow. Pushing a `v*` tag will:
-
-- build the `.app` bundle once
-- produce `ClaudeUsageBar.zip` for Sparkle and `ClaudeUsageBar.dmg` for manual installs
-- verify the packaged artifacts contain the expected app bundle resources and updater framework
-- create the GitHub Release
-- reuse GitHub-generated release notes for both the GitHub Release and the Sparkle update entry
-- generate a signed Sparkle `appcast.xml` from that exact zip
-- deploy the appcast to GitHub Pages
-
-Publishing a release is just:
+The app does not run its own OAuth flow. It reads the session created by the official `grok` CLI.
 
 ```sh
-git tag v0.0.5
-git push origin v0.0.5
+grok login
 ```
 
-One-time repo setup:
+That writes `~/.grok/auth.json` (or `$GROK_HOME/auth.json`). Open the menu bar item and choose Refresh. If the file is missing, or the only credential is an API key, the popover says to run `grok login`.
 
-1. Enable GitHub Pages and set the source to `GitHub Actions`.
-2. Add a repository Actions secret named `SPARKLE_PRIVATE_KEY`.
+Tokens are not printed. When the access token is near expiry and the file has a refresh token, issuer, and client id, the app refreshes it with the issuer's OIDC token endpoint and writes the new token back to the same file. If refresh fails, the popover asks you to run `grok login` again. The auth file is never deleted by this app.
 
-Local source builds intentionally ship with Sparkle disabled unless `SU_FEED_URL` is injected during packaging. This prevents forks and local builds from auto-updating to upstream binaries.
+History is stored in `~/.config/grok-usage-bar/history.json` (mode `0600`). Polling intervals are 5, 15, 30, and 60 minutes. The weekly-pool notification threshold is in Settings.
 
-Manual installs should prefer the DMG. The ZIP remains the source of truth for Sparkle updates and appcast generation.
+## Optional Management API
 
-You can export the current Sparkle private key from your local Keychain with:
+Settings can store an xAI [management key](https://console.x.ai/team/default/management-keys) in the macOS Keychain and a team id in preferences. That reads:
 
-```sh
-macos/.build/artifacts/sparkle/Sparkle/bin/generate_keys --account claude-usage-bar -x /tmp/claude-usage-bar.sparkle.key
-gh secret set SPARKLE_PRIVATE_KEY < /tmp/claude-usage-bar.sparkle.key
-```
+- `GET https://management-api.x.ai/v1/billing/teams/{team_id}/prepaid/balance`
+- `POST https://management-api.x.ai/v1/billing/teams/{team_id}/usage` (last 7 days, `usd` sum)
 
-The appcast feed URL used by release builds is:
+This is developer API credit and spend. It is not the SuperGrok weekly pool. The documented prepaid example uses a negative cent value for a purchase; the popover shows that signed dollar amount as returned.
+
+## Where the weekly number comes from
+
+There is no documented public API for the SuperGrok weekly pool. The primary provider repeats the call the Grok CLI makes in `xai-org/grok-build` `crates/codegen/xai-grok-shell/src/extensions/billing.rs`:
 
 ```text
-https://blimp-labs.github.io/claude-usage-bar/appcast.xml
+GET https://cli-chat-proxy.grok.com/v1/billing?format=credits
+Authorization: Bearer <session key from ~/.grok/auth.json>
+X-XAI-Token-Auth: xai-grok-cli
+x-userid: <user_id, when present>
+x-grok-client-version: grok-usage-bar
+Accept: application/json
 ```
 
-### Project structure
+`x-grok-client-version` is this app's name, not the CLI's version. A captured call succeeded with only the bearer and `X-XAI-Token-Auth`. The CLI also sends `x-grok-client-mode`; this app does not, because that value is an internal process mode.
 
-```
-macos/                           # macOS menu bar app (Swift/SwiftUI)
-├── Sources/ClaudeUsageBar/
-│   ├── ClaudeUsageBarApp.swift      # App entry point, menu bar setup
-│   ├── UsageService.swift           # OAuth, polling, API calls
-│   ├── UsageModel.swift             # API response types
-│   ├── UsageHistoryModel.swift      # History data types, time ranges
-│   ├── UsageHistoryService.swift    # Persistence, downsampling
-│   ├── UsageChartView.swift         # Swift Charts trajectory view
-│   ├── PopoverView.swift            # Main popover UI
-│   ├── SettingsView.swift           # Settings window
-│   ├── NotificationService.swift    # Usage threshold notifications
-│   ├── MenuBarIconRenderer.swift    # Menu bar icon drawing
-│   ├── PollingOptionFormatter.swift # Polling interval display labels
-│   ├── AppUpdater.swift             # Sparkle update integration
-│   └── Resources/
-│       ├── claude-logo.png          # Pre-rendered menu bar logo (512px)
-│       └── en.lproj/Localizable.strings
-├── Tests/ClaudeUsageBarTests/
-├── Resources/                       # App bundle resources (not SwiftPM)
-│   ├── Info.plist
-│   ├── Assets.xcassets/             # App icon
-│   └── claude-logo.svg             # Source SVG for menu bar logo
-├── scripts/
-│   ├── build.sh                     # Build + bundle + codesign
-│   └── generate-logo-png.swift      # Regenerate logo PNG from SVG
-└── Package.swift
+Parsing lives in `macos/Sources/GrokUsageBar/GrokBillingParser.swift`. Adjust it there if a live account disagrees with the table below.
 
-scripts/                         # Shared tooling
-└── mock-server.py               # Local mock API for development
+| Item | What we use | Confidence |
+| --- | --- | --- |
+| URL and `format=credits` | CLI source `billing.rs`, plus claudia's live capture on 2026-08-10 | High. Verified from source. Not a public contract. |
+| Auth file shape | CLI `auth/model.rs`. Scope map. OIDC key `https://auth.x.ai::<client id>`. Legacy key `https://accounts.x.ai/sign-in`. API keys live under `xai::api_key` and are ignored. Fields: `key`, `auth_mode`, `refresh_token`, `expires_at`, `create_time`, `user_id`, `email`, `oidc_issuer`, `oidc_client_id`. | High for the struct. The on-disk scope string is also in the CLI README and the enterprise install script. |
+| `X-XAI-Token-Auth: xai-grok-cli` | CLI source and README | High |
+| `creditUsagePercent` is **used** percent, 0–100 | CLI comment and claudia's check against the CLI panel | High |
+| `currentPeriod.end`, else `billingPeriodEnd`, is the reset | CLI comment (`currentPeriod` preferred) and the claudia capture | High |
+| `productUsage[].product` / `usagePercent` | Present in the claudia capture (`GrokBuild`, `GrokChat`) and in the CLI's own JSON fixture (`PRODUCT_GROK_BUILD`). The CLI struct currently ignores the field. | Medium. Names are not a stable enum. |
+| `prepaidBalance.val` is Extra Usage Credits, USD cents | CLI comment calls it purchased credit. claudia maps it to the credits balance. `val` may be a number or a string; `{}` means 0. | Medium. The consumer UI label is not in the JSON. |
+| Omitted `creditUsagePercent` plus a weekly window and no positive product percent means 0% | proto3 omits zero scalars (CLI comment on `Cent`). Not confirmed on a live zero-usage account. | Low. The popover says when this assumption was used. If products report usage and the overall percent is missing, the bar stays empty. |
+| A period whose `type` is not `USAGE_PERIOD_TYPE_WEEKLY` is not the weekly bar | CLI distinguishes weekly and monthly. OpenUsage documents unmigrated accounts as having no weekly pool. | Medium |
+| `subscriptionTier` on this HTTP body | claudia: absent. The CLI fills it from remote settings after the request. Shown only when present. | High that it is usually missing |
+| Token refresh | Standard OIDC refresh against `{issuer}/.well-known/openid-configuration` using the stored refresh token and client id. No PKCE login. | Medium. The CLI stores the fields and documents silent refresh. The exact form body was not captured from the binary. |
+| Management API balance and usage | [xAI billing reference](https://docs.x.ai/developers/rest-api-reference/management/billing) | High for the routes and example JSON. The prepaid sign convention is taken from that example, not re-derived. |
+
+If the unofficial endpoint fails, the popover shows the error, polling backs off (up to 60 minutes on HTTP 429 and server errors), and the process keeps running. Redirects are followed only when the next URL keeps the same scheme, host, and port, so the bearer token is not sent to another host. A token or user id that contains a character unsafe for an HTTP header is not sent.
+
+## Probe a real account
+
+On your Mac, after `grok login`:
+
+```sh
+python3 scripts/probe-grok-usage.py
 ```
 
-## Contributing
+The script prints the JSON shape. Percentages, booleans, product and period names, and timestamps are kept. Other strings and amounts are redacted. The bearer token is not printed, and redirects are not followed. `--url` is accepted only for `https://cli-chat-proxy.grok.com` or a loopback host. Use the output to adjust `GrokBillingParser.swift` if a field differs.
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for development setup, testing with the mock server, and submission guidelines.
+`--fixture file.json` redacts a saved body with no network, for checking the redactor.
 
-## License
+## Mock server
 
-[BSD 2-Clause](LICENSE)
+```sh
+python3 scripts/mock-server.py --port 8080 --scenario normal
+```
+
+Scenarios include `normal`, `high`, `maxed`, `low`, `omitted_zero`, `products_without_overall`, `string_cents`, `monthly`, `unauthenticated`, `stale_then_ok`, `rate_limited`, `error`, and `echo_auth`. `GET /scenario/<name>` switches one without a restart.
+
+Only loopback overrides are honored, so the bearer token cannot be redirected off the machine:
+
+```sh
+GROK_USAGE_BAR_AUTH_FILE=/tmp/grok-auth.json \
+GROK_USAGE_BAR_PROXY_BASE=http://127.0.0.1:8080/v1 \
+GROK_USAGE_BAR_MANAGEMENT_BASE=http://127.0.0.1:8080 \
+  macos/GrokUsageBar.app/Contents/MacOS/GrokUsageBar
+```
+
+`/tmp/grok-auth.json` needs a grok-cli-shaped session entry. Any non-empty `key` is accepted by the mock.
+
+## Updates
+
+Sparkle is compiled in and left unconfigured: the app bundle has no feed URL and no upstream public key, so it will not check Blimp-Labs' appcast. The release workflow refuses a repository or feed URL that points at that project, and it skips appcast publishing unless `SPARKLE_PRIVATE_KEY` is set on this repository.

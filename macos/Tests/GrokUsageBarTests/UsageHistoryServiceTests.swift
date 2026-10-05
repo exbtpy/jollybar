@@ -1,5 +1,5 @@
 import XCTest
-@testable import ClaudeUsageBar
+@testable import GrokUsageBar
 
 @MainActor
 final class UsageHistoryServiceTests: XCTestCase {
@@ -27,7 +27,7 @@ final class UsageHistoryServiceTests: XCTestCase {
 
     func testFlushWritesFileWithCorrectPermissions() throws {
         let service = makeService()
-        service.recordDataPoint(pct5h: 0.5, pct7d: 0.3)
+        service.recordDataPoint(pctWeekly: 0.5)
         service.flushToDisk()
 
         let url = service.historyFileURL
@@ -35,28 +35,27 @@ final class UsageHistoryServiceTests: XCTestCase {
 
         let attrs = try FileManager.default.attributesOfItem(atPath: url.path)
         let perms = attrs[.posixPermissions] as? Int
-        XCTAssertEqual(perms, 0o600, "History file should have 0600 permissions")
+        XCTAssertEqual(perms, 0o600 as Int?, "History file should have 0600 permissions")
     }
 
     func testFlushDataRoundTrips() throws {
         let service = makeService()
-        service.recordDataPoint(pct5h: 0.42, pct7d: 0.88)
+        service.recordDataPoint(pctWeekly: 0.42)
         service.flushToDisk()
 
         let service2 = makeService()
         service2.loadHistory()
 
         XCTAssertEqual(service2.history.dataPoints.count, 1)
-        XCTAssertEqual(try XCTUnwrap(service2.history.dataPoints.first).pct5h, 0.42, accuracy: 0.001)
-        XCTAssertEqual(try XCTUnwrap(service2.history.dataPoints.first).pct7d, 0.88, accuracy: 0.001)
+        XCTAssertEqual(try XCTUnwrap(service2.history.dataPoints.first).pctWeekly, 0.42, accuracy: 0.001)
     }
 
     func testFlushPreservesExistingFileOnSecondWrite() throws {
         let service = makeService()
-        service.recordDataPoint(pct5h: 0.1, pct7d: 0.2)
+        service.recordDataPoint(pctWeekly: 0.1)
         service.flushToDisk()
 
-        service.recordDataPoint(pct5h: 0.3, pct7d: 0.4)
+        service.recordDataPoint(pctWeekly: 0.3)
         service.flushToDisk()
 
         let service2 = makeService()
@@ -87,23 +86,23 @@ final class UsageHistoryServiceTests: XCTestCase {
             attributes: [.posixPermissions: 0o644]
         )
 
-        service.recordDataPoint(pct5h: 0.5, pct7d: 0.5)
+        service.recordDataPoint(pctWeekly: 0.5)
         service.flushToDisk()
 
         let attrs = try FileManager.default.attributesOfItem(atPath: service.historyFileURL.path)
-        XCTAssertEqual(attrs[.posixPermissions] as? Int, 0o600)
+        XCTAssertEqual(attrs[.posixPermissions] as? Int, 0o600 as Int?)
     }
 
     func testPermissionsPreservedAfterMultipleFlushes() throws {
         let service = makeService()
-        service.recordDataPoint(pct5h: 0.1, pct7d: 0.2)
+        service.recordDataPoint(pctWeekly: 0.1)
         service.flushToDisk()
 
-        service.recordDataPoint(pct5h: 0.3, pct7d: 0.4)
+        service.recordDataPoint(pctWeekly: 0.3)
         service.flushToDisk()
 
         let attrs = try FileManager.default.attributesOfItem(atPath: service.historyFileURL.path)
         let perms = attrs[.posixPermissions] as? Int
-        XCTAssertEqual(perms, 0o600, "Permissions should remain 0600 after multiple flushes")
+        XCTAssertEqual(perms, 0o600 as Int?, "Permissions should remain 0600 after multiple flushes")
     }
 }

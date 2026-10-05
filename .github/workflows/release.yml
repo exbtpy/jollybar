@@ -13,25 +13,43 @@ jobs:
     runs-on: macos-26
     permissions:
       contents: write
+    outputs:
+      publish_appcast: ${{ steps.appcast.outputs.publish }}
     env:
       REPOSITORY_NAME: ${{ github.event.repository.name }}
     steps:
       - uses: actions/checkout@v4
 
-      - name: Configure GitHub Pages
-        uses: actions/configure-pages@v5
+      - name: Refuse upstream appcast publishing
+        run: |
+          set -euo pipefail
+          repo="$(printf '%s' "$GITHUB_REPOSITORY" | tr '[:upper:]' '[:lower:]')"
+          case "$repo" in
+            blimp-labs/*|*claude-usage-bar*)
+              echo "::error::Refusing to publish a release from the upstream Claude Usage Bar repository."
+              exit 1
+              ;;
+          esac
+          if [[ -n "${SU_FEED_URL:-}" ]]; then
+            feed="$(printf '%s' "$SU_FEED_URL" | tr '[:upper:]' '[:lower:]')"
+            case "$feed" in
+              *blimp-labs*|*claude-usage-bar*)
+                echo "::error::Refusing SU_FEED_URL that points at the upstream appcast."
+                exit 1
+                ;;
+            esac
+          fi
 
       - name: Build release app bundle
         run: |
+          set -euo pipefail
           version="${GITHUB_REF_NAME#v}"
-          owner="$(printf '%s' "$GITHUB_REPOSITORY_OWNER" | tr '[:upper:]' '[:lower:]')"
           export APP_VERSION="$version"
-          export SU_FEED_URL="https://${owner}.github.io/${REPOSITORY_NAME}/appcast.xml"
+          # Sparkle stays unconfigured: do not embed a feed URL.
+          unset SU_FEED_URL
           bash macos/scripts/build.sh
 
       - name: Package and verify release artifacts
-        env:
-          EXPECT_FEED_URL: '1'
         run: |
           bash macos/scripts/build.sh --skip-build --zip --dmg
           make verify-release
@@ -73,7 +91,7 @@ jobs:
           with urllib.request.urlopen(request) as response:
               html = response.read().decode("utf-8")
 
-          with open("dist/archives/ClaudeUsageBar.html", "w", encoding="utf-8") as fh:
+          with open("dist/archives/GrokUsageBar.html", "w", encoding="utf-8") as fh:
               fh.write(html)
           PY
 
@@ -81,21 +99,39 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            macos/ClaudeUsageBar.zip
-            macos/ClaudeUsageBar.dmg
+            macos/GrokUsageBar.zip
+            macos/GrokUsageBar.dmg
           body_path: dist/release-notes.md
 
       - name: Generate Sparkle appcast
+        id: appcast
         env:
           SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
         run: |
+          set -euo pipefail
+          repo="$(printf '%s' "$GITHUB_REPOSITORY" | tr '[:upper:]' '[:lower:]')"
+          case "$repo" in
+            blimp-labs/*|*claude-usage-bar*)
+              echo "::error::Refusing to generate an appcast for the upstream repository."
+              exit 1
+              ;;
+          esac
           if [[ -z "${SPARKLE_PRIVATE_KEY:-}" ]]; then
-            echo "::error::Missing SPARKLE_PRIVATE_KEY repository secret."
-            exit 1
+            echo "Sparkle is unconfigured (no SPARKLE_PRIVATE_KEY). Skipping the appcast."
+            echo "publish=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if [[ -n "${SU_FEED_URL:-}" ]]; then
+            feed="$(printf '%s' "$SU_FEED_URL" | tr '[:upper:]' '[:lower:]')"
+            case "$feed" in
+              *blimp-labs*|*claude-usage-bar*)
+                echo "::error::Refusing to publish an upstream appcast."
+                exit 1
+                ;;
+            esac
           fi
 
-          cp macos/ClaudeUsageBar.zip dist/archives/ClaudeUsageBar.zip
-
+          cp macos/GrokUsageBar.zip dist/archives/GrokUsageBar.zip
           printf '%s' "$SPARKLE_PRIVATE_KEY" | \
             macos/.build/artifacts/sparkle/Sparkle/bin/generate_appcast \
               dist/archives \
@@ -103,14 +139,17 @@ jobs:
               --download-url-prefix "https://github.com/${GITHUB_REPOSITORY}/releases/download/${GITHUB_REF_NAME}/" \
               --maximum-deltas 0 \
               -o dist/site/appcast.xml
+          echo "publish=true" >> "$GITHUB_OUTPUT"
 
       - name: Upload appcast for GitHub Pages
+        if: steps.appcast.outputs.publish == 'true'
         uses: actions/upload-pages-artifact@v4
         with:
           path: dist/site
 
   deploy_appcast:
     needs: release
+    if: needs.release.outputs.publish_appcast == 'true'
     runs-on: ubuntu-latest
     permissions:
       pages: write

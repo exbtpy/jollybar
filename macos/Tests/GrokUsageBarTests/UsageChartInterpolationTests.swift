@@ -1,14 +1,14 @@
 import XCTest
-@testable import ClaudeUsageBar
+@testable import GrokUsageBar
 
 final class UsageChartInterpolationTests: XCTestCase {
     func testInterpolateValuesClampsNegativeOvershootAfterReset() {
         let base = Date(timeIntervalSince1970: 0)
         let points = [
-            UsageDataPoint(timestamp: base, pct5h: 0.3, pct7d: 0.3),
-            UsageDataPoint(timestamp: base.addingTimeInterval(1), pct5h: 0.7, pct7d: 0.7),
-            UsageDataPoint(timestamp: base.addingTimeInterval(2), pct5h: 0.0, pct7d: 0.0),
-            UsageDataPoint(timestamp: base.addingTimeInterval(3), pct5h: 1.0, pct7d: 1.0),
+            UsageDataPoint(timestamp: base, pctWeekly: 0.3),
+            UsageDataPoint(timestamp: base.addingTimeInterval(1), pctWeekly: 0.7),
+            UsageDataPoint(timestamp: base.addingTimeInterval(2), pctWeekly: 0.0),
+            UsageDataPoint(timestamp: base.addingTimeInterval(3), pctWeekly: 1.0),
         ]
 
         XCTAssertLessThan(
@@ -21,17 +21,16 @@ final class UsageChartInterpolationTests: XCTestCase {
             in: points
         )
 
-        XCTAssertEqual(interpolated?.pct5h, 0)
-        XCTAssertEqual(interpolated?.pct7d, 0)
+        XCTAssertEqual(interpolated?.pctWeekly, 0 as Double?)
     }
 
     func testInterpolateValuesClampsPositiveOvershootToHundredPercent() {
         let base = Date(timeIntervalSince1970: 0)
         let points = [
-            UsageDataPoint(timestamp: base, pct5h: 0.0, pct7d: 0.0),
-            UsageDataPoint(timestamp: base.addingTimeInterval(1), pct5h: 0.5, pct7d: 0.5),
-            UsageDataPoint(timestamp: base.addingTimeInterval(2), pct5h: 1.0, pct7d: 1.0),
-            UsageDataPoint(timestamp: base.addingTimeInterval(3), pct5h: 0.0, pct7d: 0.0),
+            UsageDataPoint(timestamp: base, pctWeekly: 0.0),
+            UsageDataPoint(timestamp: base.addingTimeInterval(1), pctWeekly: 0.5),
+            UsageDataPoint(timestamp: base.addingTimeInterval(2), pctWeekly: 1.0),
+            UsageDataPoint(timestamp: base.addingTimeInterval(3), pctWeekly: 0.0),
         ]
 
         XCTAssertGreaterThan(
@@ -44,7 +43,6 @@ final class UsageChartInterpolationTests: XCTestCase {
             in: points
         )
 
-        XCTAssertEqual(interpolated?.pct5h, 1)
-        XCTAssertEqual(interpolated?.pct7d, 1)
+        XCTAssertEqual(interpolated?.pctWeekly, 1 as Double?)
     }
 }
