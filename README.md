@@ -4,7 +4,9 @@ A macOS menu bar app that shows the shared weekly Grok usage pool.
 
 This is a fork of [Blimp-Labs/claude-usage-bar](https://github.com/Blimp-Labs/claude-usage-bar) at commit `7232e065b8100f4280c3a26a9fcb6503b73bae15`. The original project is Copyright (c) 2026, Krystian, and remains under the BSD 2-Clause license in `LICENSE`. Upstream history is preserved on `main`.
 
-The menu bar shows two short meters, in the same stacked layout as the original Claude Usage Bar. The top bar is **GB** (Grok Bot spend from Cursor). The bottom bar is **Wk** (the grok.com weekly pool). The popover has one section for each, with a title, percentage, progress bar, and reset countdown, then a history chart with both series, an updated time, and Settings, Refresh, Check for Updates, and Quit. Product breakdown and Extra Usage Credits sit in a disclosure under the weekly row. Each source is configured on its own: if one is missing or failing, its row says so and the other keeps updating.
+The Grok Bot session reader is adapted from [grokbot-meter](https://github.com/nuno/grokbot-meter) (MIT, Copyright (c) 2026 Nuno Costa). SuperGrok category names follow [Grok-Rate-Limit-Display](https://github.com/blankspeaker/Grok-Rate-Limit-Display) (MIT, Copyright (c) 2026 blankspeaker). Both notices are in `LICENSE`.
+
+The menu bar shows two short meters, in the same stacked layout as the original Claude Usage Bar. The top bar is **GB** (Grok Bot weekly usage from the Grok Bot app on this Mac). The bottom bar is **Wk** (SuperGrok) only when the signed-in grok.com account has a weekly pool. Otherwise the bottom bar is **CM** (Cursor Models). Other Models and on-demand spend sit in Details. Settings can switch the menu bar between Classic (chart glyph) and Companion (an original pet that follows Grok Bot weekly usage). The pet animation runs only while the popover is open. Each source fails on its own: a grok.com error does not clear Grok Bot, and the other way around.
 
 ## Build
 
@@ -35,7 +37,7 @@ That writes `~/.grok/auth.json` (or `$GROK_HOME/auth.json`). Open the menu bar i
 
 Tokens are not printed. When the access token is near expiry and the file has a refresh token, issuer, and client id, the app refreshes it with the issuer's OIDC token endpoint and writes the new token back to the same file. If refresh fails, the popover asks you to run `grok login` again. The auth file is never deleted by this app.
 
-History is stored in `~/.config/grok-usage-bar/history.json` (mode `0600`). The weekly pool is polled every 5, 15, 30, or 60 minutes. Cursor Grok Bot is polled at most once an hour, because that API aggregates hourly. Refresh can ask Cursor sooner, except after HTTP 429, which waits for `Retry-After`. Notification thresholds for the two sources are separate and live in Settings.
+History is stored in `~/.config/grok-usage-bar/history.json` (mode `0600`). The grok.com pool and the Grok Bot session are polled every 5, 15, 30, or 60 minutes. The optional Teams Admin API is polled at most once an hour. Refresh can ask Cursor sooner, except after HTTP 429, which waits for `Retry-After`. Notification thresholds for Grok Bot and the weekly pool are separate and live in Settings.
 
 ## Optional Management API
 
@@ -46,9 +48,31 @@ Settings can store an xAI [management key](https://console.x.ai/team/default/man
 
 This is developer API credit and spend. It is not the SuperGrok weekly pool. The documented prepaid example uses a negative cent value for a purchase; the popover shows that signed dollar amount as returned.
 
-## Grok Bot from Cursor
+## Grok Bot weekly usage
 
-Settings stores a Cursor API key (`crsr_…`) in the Keychain (account `cursor-api-key`, service `com.exbtpy.GrokUsageBar`). The request is HTTP Basic with the key as the username and an empty password. An optional member email selects your row in team spend. An optional monthly budget is the percent denominator when that row has no per-user limit. An optional `org_…` id switches the calls to the organization routes and uses the contract end as the reset. The organization pool limit is not treated as a personal Grok Bot limit.
+The primary Grok Bot source is the desktop app's Cursor session, read the same way as grokbot-meter. Parsing and the request live in `macos/Sources/GrokUsageBar/CursorDashboard.swift`.
+
+The app looks for `sand-secrets.json` in:
+
+- `~/Library/Application Support/Grok Bot/sand-secrets.json`
+- `~/.config/Grok Bot/sand-secrets.json`
+- `~/.grokbot/sand-secrets.json`
+- the `sand-client-persistence` copies of the first two
+
+It decrypts only `cursor-access-token` (or the active account's copy). Values may be `plaintext:v1:`, `scoped:v1:`, a raw JWT, or a Chromium `v10` blob. The Mac blob is AES-128-CBC with a key from PBKDF2-SHA1 (salt `saltysalt`, 1003 rounds) of the Keychain password `Grok Bot Safe Storage` / `Grok Bot Key`. The refresh token is never decrypted and never sent. This app does not refresh the sign-in. An expired token or HTTP 401 says "Open Grok Bot to refresh sign-in". A Keychain deny is remembered until relaunch.
+
+Each call is `POST` with body `{}` and headers `Authorization: Bearer`, `Content-Type: application/json`, and `Connect-Protocol-Version: 1`.
+
+| Item | What we use | Confidence |
+| --- | --- | --- |
+| `POST https://api2.cursor.sh/aiserver.v1.DashboardService/GetSandUsageStatus` | `usagePercent` is the Grok Bot weekly used percent. `nextResetTimestampUtc` is the reset, or period start plus 7 days when that timestamp is missing. `includedLimitZero` pauses the companion. | High for the URL, method, headers, and these field names: they are what grokbot-meter sends. Not yet confirmed against this owner's token. |
+| `POST …/GetCurrentPeriodUsage` | `planUsage.autoPercentUsed` is Cursor Models. `planUsage.apiPercentUsed` is Other Models. The same names are also accepted under `individualUsage.plan`. `spendLimitUsage.individualUsed` / `individualLimit` are on-demand cents. A limit at or above 2147483647 means no cap. A failed call is unknown, not "no cap". | Medium. The endpoint and on-demand fields match grokbot-meter. The Cursor Models / Other Models mapping comes from public Cursor usage parsers, not from a captured body on this account. If the field is absent, the row says so. |
+| `POST …/GetMe` | `email`, or `user.email`, shown as a caption. A failure here does not fail the usage rows. | Medium. grokbot-meter reads the same names. |
+| Teams fallback | Used only when no Grok Bot session file is present and a Cursor API key is saved. The top bar is then labeled **Sp** (spend), not the weekly meter. | High that the Admin API is Teams/Enterprise only. |
+
+## Grok Bot spend (Teams fallback)
+
+Settings can store a Cursor API key (`crsr_…`) in the Keychain (account `cursor-api-key`, service `com.exbtpy.GrokUsageBar`). This is optional. It is not used while a Grok Bot session file is present, including when that session is expired. The request is HTTP Basic with the key as the username and an empty password. An optional member email selects your row in team spend. An optional monthly budget is the percent denominator when that row has no per-user limit. An optional `org_…` id switches the calls to the organization routes and uses the contract end as the reset. The organization pool limit is not treated as a personal Grok Bot limit.
 
 Parsing lives in `macos/Sources/GrokUsageBar/CursorUsage.swift`.
 
@@ -92,7 +116,8 @@ Parsing lives in `macos/Sources/GrokUsageBar/GrokBillingParser.swift`. Adjust it
 | `currentPeriod.end`, else `billingPeriodEnd`, is the reset | CLI comment (`currentPeriod` preferred) and the claudia capture | High |
 | `productUsage[].product` / `usagePercent` | Present in the claudia capture (`GrokBuild`, `GrokChat`) and in the CLI's own JSON fixture (`PRODUCT_GROK_BUILD`). The CLI struct currently ignores the field. | Medium. Names are not a stable enum. |
 | `prepaidBalance.val` is Extra Usage Credits, USD cents | CLI comment calls it purchased credit. claudia maps it to the credits balance. `val` may be a number or a string; `{}` means 0. | Medium. The consumer UI label is not in the JSON. |
-| Omitted `creditUsagePercent` plus a weekly window and no positive product percent means 0% | proto3 omits zero scalars (CLI comment on `Cent`). Not confirmed on a live zero-usage account. | Low. The popover says when this assumption was used. If products report usage and the overall percent is missing, the bar stays empty. |
+| A pool exists only when `creditUsagePercent` is present (including explicit 0) or a product row has `usagePercent` | The owner's Mac (2026-10-06) returned a weekly `currentPeriod`, cent fields, and `isUnifiedBillingUser`, with no percent and no `productUsage`. That account is treated as having no SuperGrok pool, so the bottom bar shows Cursor Models. Grok-Rate-Limit-Display treats period dates as a signal and would show 0% for that body. | High for that live shape. Explicit 0 remains 0% of a real pool. |
+| Category names | `productUsage[].product` / `usagePercent`, same endpoint as Grok-Rate-Limit-Display. Known names include Grok Build, App Builder, Grok Chat, Chat, Imagine, Grok Plugins, Voice, API, and 3rd Party. | Medium. The names are not a stable enum. The owner's captured body had no `productUsage`. |
 | A period whose `type` is not `USAGE_PERIOD_TYPE_WEEKLY` is not the weekly bar | CLI distinguishes weekly and monthly. OpenUsage documents unmigrated accounts as having no weekly pool. | Medium |
 | `subscriptionTier` on this HTTP body | claudia: absent. The CLI fills it from remote settings after the request. Shown only when present. | High that it is usually missing |
 | Token refresh | Standard OIDC refresh against `{issuer}/.well-known/openid-configuration` using the stored refresh token and client id. No PKCE login. | Medium. The CLI stores the fields and documents silent refresh. The exact form body was not captured from the binary. |
@@ -112,7 +137,24 @@ The script prints the JSON shape. Percentages, booleans, product and period name
 
 `--fixture file.json` redacts a saved body with no network, for checking the redactor.
 
-## Probe Cursor
+## Probe the Cursor dashboard Grok Bot uses
+
+On your Mac, with Grok Bot signed in:
+
+```sh
+python3 scripts/probe-cursor-sand.py
+```
+
+The script POSTs the three dashboard methods, prints HTTP status on stderr, and prints JSON shape on stdout. Percent numbers, booleans, short tokens, and timestamps are kept. Emails are reduced to a length. Any string that looks like a JWT, or that contains `crsr_` or `bearer`, is redacted. The access token and the Keychain password are not printed. The refresh token is not read. Redirects are not followed. `--url` is accepted only for `https://api2.cursor.sh` or a loopback host.
+
+```sh
+python3 scripts/probe-cursor-sand.py --token-file /path/to/access-token
+python3 scripts/probe-cursor-sand.py --fixture sand.json period.json me.json
+```
+
+`--fixture` redacts saved bodies with no network.
+
+## Probe Cursor Admin API
 
 On your Mac, with a Cursor API key that is allowed to call the Admin API:
 
@@ -134,9 +176,11 @@ redacts two saved bodies with no network.
 python3 scripts/mock-server.py --port 8080 --scenario normal
 ```
 
-Scenarios include `normal`, `high`, `maxed`, `low`, `omitted_zero`, `products_without_overall`, `string_cents`, `monthly`, `unauthenticated`, `stale_then_ok`, `rate_limited`, `error`, and `echo_auth`. Cursor-only scenarios are `cursor_unauthorized`, `cursor_forbidden`, `cursor_no_type`, and `cursor_rate_limited`. `GET /scenario/<name>` switches one without a restart. A Cursor scenario does not change the weekly billing payload.
+Scenarios include `normal`, `high`, `maxed`, `low`, `omitted_zero` (no SuperGrok pool), `products_without_overall`, `string_cents`, `monthly`, `unauthenticated`, `stale_then_ok`, `rate_limited`, `error`, and `echo_auth`. Cursor Admin scenarios are `cursor_unauthorized`, `cursor_forbidden`, `cursor_no_type`, and `cursor_rate_limited`. `sand_unauthorized` returns 401 on the dashboard routes only. `GET /scenario/<name>` switches one without a restart.
 
-The mock also serves `POST /teams/spend` and `POST /teams/filtered-usage-events` with Basic auth. The sample member is `person@example.com` with a $50 spend limit, 250 cents of `grok_bot`, and 900 cents of other Cursor usage, so Grok Bot is 5%. Responses include an ETag; a matching `If-None-Match` returns 304. The Authorization header is not logged.
+The mock also serves `POST /teams/spend` and `POST /teams/filtered-usage-events` with Basic auth. The sample member is `person@example.com` with a $50 spend limit, 250 cents of `grok_bot`, and 900 cents of other Cursor usage, so Grok Bot spend is 5%. Responses include an ETag; a matching `If-None-Match` returns 304.
+
+It also serves the three `POST /aiserver.v1.DashboardService/…` routes with Bearer auth. The sample is Grok Bot weekly 8%, Cursor Models 7%, Other Models 0%, and on-demand 150 of 2000 cents. The Authorization header is not logged.
 
 Only loopback overrides are honored, so tokens and API keys cannot be redirected off the machine:
 
@@ -145,6 +189,8 @@ GROK_USAGE_BAR_AUTH_FILE=/tmp/grok-auth.json \
 GROK_USAGE_BAR_PROXY_BASE=http://127.0.0.1:8080/v1 \
 GROK_USAGE_BAR_MANAGEMENT_BASE=http://127.0.0.1:8080 \
 GROK_USAGE_BAR_CURSOR_BASE=http://127.0.0.1:8080 \
+GROK_USAGE_BAR_CURSOR_DASHBOARD_BASE=http://127.0.0.1:8080 \
+GROK_USAGE_BAR_SAND_SECRETS=/tmp/sand-secrets.json \
   macos/GrokUsageBar.app/Contents/MacOS/GrokUsageBar
 ```
 

@@ -23,7 +23,7 @@ Scenarios:
     high                    92% weekly
     maxed                   100% weekly
     low                     2% weekly
-    omitted_zero            weekly window, no creditUsagePercent (parser may show 0%)
+    omitted_zero            weekly window, no creditUsagePercent (no SuperGrok pool)
     products_without_overall
                             product percents and no overall percent
     string_cents            prepaidBalance.val as a string
@@ -51,6 +51,16 @@ Cursor routes; billing stays on the normal payload:
     cursor_rate_limited     429 with Retry-After 60
 
 Both Cursor responses send an ETag. A matching If-None-Match returns 304.
+
+Cursor dashboard routes (Bearer, body ignored, Authorization not logged):
+
+    POST /aiserver.v1.DashboardService/GetSandUsageStatus
+    POST /aiserver.v1.DashboardService/GetCurrentPeriodUsage
+    POST /aiserver.v1.DashboardService/GetMe
+
+The sample is Grok Bot weekly 8%, Cursor Models (autoPercentUsed) 7%,
+Other Models (apiPercentUsed) 0, and on-demand 150 of 2000 cents.
+``sand_unauthorized`` returns 401 on those three routes only.
 """
 
 import argparse
@@ -106,6 +116,10 @@ CURSOR_SCENARIOS = {
     "cursor_no_type",
     "cursor_rate_limited",
 }
+DASHBOARD_SCENARIOS = {
+    "sand_unauthorized",
+}
+DASHBOARD_PREFIX = "/aiserver.v1.DashboardService/"
 SPEND_ETAG = '"spend-1"'
 EVENTS_ETAG = '"events-1"'
 
@@ -231,7 +245,8 @@ class Handler(BaseHTTPRequestHandler):
 
         if path.startswith("/scenario/"):
             name = path.split("/", 2)[2]
-            if name not in SCENARIOS and name not in SPECIAL_SCENARIOS and name not in CURSOR_SCENARIOS:
+            known = set(SCENARIOS) | SPECIAL_SCENARIOS | CURSOR_SCENARIOS | DASHBOARD_SCENARIOS
+            if name not in known:
                 self._json(404, {"error": "unknown scenario"})
                 return
             Handler.scenario = name
@@ -274,6 +289,13 @@ class Handler(BaseHTTPRequestHandler):
                     "token_type": "Bearer",
                 },
             )
+            return
+
+        if path.startswith(DASHBOARD_PREFIX):
+            length = int(self.headers.get("Content-Length", "0") or "0")
+            if length:
+                self.rfile.read(length)
+            self._dashboard(path[len(DASHBOARD_PREFIX):])
             return
 
         if path in {"/teams/spend", "/teams/filtered-usage-events"}:
@@ -350,6 +372,47 @@ class Handler(BaseHTTPRequestHandler):
         payload = SCENARIOS.get(scenario, SCENARIOS["normal"])()
         self._json(200, payload)
 
+    def _dashboard(self, method):
+        auth = self.headers.get("Authorization", "")
+        if Handler.scenario == "sand_unauthorized" or not auth.startswith("Bearer ") or len(auth) <= len("Bearer "):
+            self._json(401, {"error": "unauthorized"})
+            return
+        start = iso_past(1)
+        if method == "GetSandUsageStatus":
+            self._json(
+                200,
+                {
+                    "usagePercent": 8,
+                    "includedLimitZero": False,
+                    "hasNonZeroIncludedLimit": True,
+                    "hasAvailableUsage": True,
+                    "currentPeriodStart": start,
+                    "nextResetTimestampUtc": iso_future(days=6),
+                },
+            )
+            return
+        if method == "GetCurrentPeriodUsage":
+            self._json(
+                200,
+                {
+                    "planUsage": {
+                        "autoPercentUsed": 7,
+                        "apiPercentUsed": 0,
+                        "totalPercentUsed": 7,
+                    },
+                    "spendLimitUsage": {
+                        "individualUsed": 150,
+                        "individualLimit": 2000,
+                    },
+                    "billingCycleEnd": iso_future(days=20),
+                },
+            )
+            return
+        if method == "GetMe":
+            self._json(200, {"email": "grokbot-user@example.com"})
+            return
+        self._json(404, {"error": "not found"})
+
     def _cursor(self, path):
         scenario = Handler.scenario if Handler.scenario in CURSOR_SCENARIOS else "ok"
         if scenario == "cursor_unauthorized":
@@ -419,7 +482,7 @@ def main():
         help="Write the bound port to this path before serving (used by tests)",
     )
     args = parser.parse_args()
-    known = set(SCENARIOS) | SPECIAL_SCENARIOS | CURSOR_SCENARIOS
+    known = set(SCENARIOS) | SPECIAL_SCENARIOS | CURSOR_SCENARIOS | DASHBOARD_SCENARIOS
     if args.scenario not in known:
         parser.error(f"unknown scenario {args.scenario}")
     Handler.scenario = args.scenario

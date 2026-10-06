@@ -9,18 +9,22 @@ struct UsageDataPoint: Codable, Identifiable {
     let pctBot: Double?
     /// False when this point has no weekly sample. `pctWeekly` is then unused.
     let includesWeekly: Bool
+    /// Cursor Models used fraction, 0...1. Recorded when that pool is the bottom slot.
+    let pctCursorModels: Double?
 
     init(
         timestamp: Date = Date(),
         pctWeekly: Double,
         pctBot: Double? = nil,
-        includesWeekly: Bool = true
+        includesWeekly: Bool = true,
+        pctCursorModels: Double? = nil
     ) {
         self.id = UUID()
         self.timestamp = timestamp
         self.pctWeekly = pctWeekly
         self.pctBot = pctBot
         self.includesWeekly = includesWeekly
+        self.pctCursorModels = pctCursorModels
     }
 
     init(from decoder: Decoder) throws {
@@ -38,6 +42,7 @@ struct UsageDataPoint: Codable, Identifiable {
         }
         pctBot = try container.decodeIfPresent(Double.self, forKey: .pctBot)
         includesWeekly = try container.decodeIfPresent(Bool.self, forKey: .includesWeekly) ?? true
+        pctCursorModels = try container.decodeIfPresent(Double.self, forKey: .pctCursorModels)
     }
 
     func encode(to encoder: Encoder) throws {
@@ -47,6 +52,7 @@ struct UsageDataPoint: Codable, Identifiable {
         try container.encode(pctWeekly, forKey: .pctWeekly)
         try container.encodeIfPresent(pctBot, forKey: .pctBot)
         try container.encode(includesWeekly, forKey: .includesWeekly)
+        try container.encodeIfPresent(pctCursorModels, forKey: .pctCursorModels)
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -56,6 +62,7 @@ struct UsageDataPoint: Codable, Identifiable {
         case pctBot
         case pct7d
         case includesWeekly
+        case pctCursorModels
     }
 }
 

@@ -14,7 +14,7 @@ final class GrokBillingParserTests: XCTestCase {
         """
         let reading = GrokBillingParser.parse(Data(json.utf8))
         XCTAssertEqual(reading.usedPercent, 100.0 as Double?)
-        XCTAssertFalse(reading.assumedZero)
+        XCTAssertTrue(reading.hasWeeklyPool)
         XCTAssertNil(reading.unavailableReason)
         XCTAssertEqual(reading.products.map(\.displayName), ["Grok Build", "Grok Chat"])
         XCTAssertEqual(reading.products[0].usagePercent, 100.0 as Double?)
@@ -54,14 +54,47 @@ final class GrokBillingParserTests: XCTestCase {
         XCTAssertEqual(reading.extraCreditsCents, 0 as Int64?)
     }
 
-    func testOmittedPercentOnConfirmedWeeklyWindowIsZero() {
+    func testOmittedPercentOnConfirmedWeeklyWindowIsNotAPool() {
         let json = """
         {"config":{"currentPeriod":{"type":"USAGE_PERIOD_TYPE_WEEKLY","start":"2026-06-01T00:00:00Z","end":"2026-06-08T00:00:00Z"},
           "productUsage":[{"product":"GrokChat"}],"prepaidBalance":{"val":0}}}
         """
         let reading = GrokBillingParser.parse(Data(json.utf8))
+        XCTAssertNil(reading.usedPercent)
+        XCTAssertFalse(reading.hasWeeklyPool)
+        XCTAssertNil(reading.unavailableReason)
+    }
+
+    func testOwnerCreditsShapeHasNoSuperGrokPool() {
+        let json = """
+        {"config":{
+          "billingPeriodStart":"2026-09-29T00:00:00Z",
+          "billingPeriodEnd":"2026-10-06T00:00:00Z",
+          "currentPeriod":{"start":"2026-09-29T00:00:00Z","end":"2026-10-06T00:00:00Z","type":"USAGE_PERIOD_TYPE_WEEKLY"},
+          "isUnifiedBillingUser":true,
+          "onDemandCap":{"val":0},
+          "onDemandUsed":{"val":0},
+          "prepaidBalance":{"val":0},
+          "topUpMethod":"TOP_UP_METHOD_UNSPECIFIED"
+        }}
+        """
+        let reading = GrokBillingParser.parse(Data(json.utf8))
+        XCTAssertFalse(reading.hasWeeklyPool)
+        XCTAssertNil(reading.usedPercent)
+        XCTAssertNil(reading.unavailableReason)
+        XCTAssertEqual(reading.extraCreditsCents, 0 as Int64?)
+        XCTAssertEqual(reading.onDemandCapCents, 0 as Int64?)
+        XCTAssertEqual(reading.isUnifiedBillingUser, true as Bool?)
+        XCTAssertNotNil(reading.resetsAt)
+    }
+
+    func testExplicitZeroIsARealPool() {
+        let json = """
+        {"config":{"creditUsagePercent":0,"currentPeriod":{"type":"USAGE_PERIOD_TYPE_WEEKLY","start":"2026-06-01T00:00:00Z","end":"2026-06-08T00:00:00Z"}}}
+        """
+        let reading = GrokBillingParser.parse(Data(json.utf8))
         XCTAssertEqual(reading.usedPercent, 0.0 as Double?)
-        XCTAssertTrue(reading.assumedZero)
+        XCTAssertTrue(reading.hasWeeklyPool)
         XCTAssertNil(reading.unavailableReason)
     }
 
@@ -72,7 +105,7 @@ final class GrokBillingParserTests: XCTestCase {
         """
         let reading = GrokBillingParser.parse(Data(json.utf8))
         XCTAssertNil(reading.usedPercent)
-        XCTAssertFalse(reading.assumedZero)
+        XCTAssertTrue(reading.hasWeeklyPool)
         XCTAssertEqual(reading.products.first?.usagePercent, 61.2 as Double?)
         XCTAssertNotNil(reading.unavailableReason)
     }
@@ -83,6 +116,7 @@ final class GrokBillingParserTests: XCTestCase {
         """
         let reading = GrokBillingParser.parse(Data(json.utf8))
         XCTAssertNil(reading.usedPercent)
+        XCTAssertFalse(reading.hasWeeklyPool)
         XCTAssertNil(reading.resetsAt)
         XCTAssertTrue(reading.unavailableReason?.contains("USAGE_PERIOD_TYPE_MONTHLY") == true)
     }
@@ -111,6 +145,10 @@ final class GrokBillingParserTests: XCTestCase {
         XCTAssertEqual(GrokBillingParser.displayName(for: "GrokImagine"), "Imagine")
         XCTAssertEqual(GrokBillingParser.displayName(for: "PRODUCT_GROK_VOICE"), "Voice")
         XCTAssertEqual(GrokBillingParser.displayName(for: "API"), "API")
+        XCTAssertEqual(GrokBillingParser.displayName(for: "GrokAppBuilder"), "App Builder")
+        XCTAssertEqual(GrokBillingParser.displayName(for: "GrokPlugins"), "Grok Plugins")
+        XCTAssertEqual(GrokBillingParser.displayName(for: "ThirdParty"), "3rd Party")
+        XCTAssertEqual(GrokBillingParser.displayName(for: "Chat"), "Chat")
     }
 
     func testBalanceParsesNegativeStringCents() throws {

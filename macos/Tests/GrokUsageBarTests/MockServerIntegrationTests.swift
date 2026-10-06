@@ -37,14 +37,16 @@ final class MockServerIntegrationTests: XCTestCase {
         XCTAssertEqual(harness.history.history.dataPoints.first?.pctWeekly ?? -1, 0.42, accuracy: 0.001)
     }
 
-    func testOmittedPercentOnAWeeklyWindowShowsZero() async throws {
+    func testOmittedPercentOnAWeeklyWindowIsNotAPool() async throws {
         let harness = try makeHarness()
         try await setScenario("omitted_zero")
         await harness.service.fetchUsage()
 
         XCTAssertNil(harness.service.lastError)
-        XCTAssertEqual(harness.service.reading?.usedPercent, 0.0 as Double?)
-        XCTAssertEqual(harness.service.reading?.assumedZero, true as Bool?)
+        XCTAssertNil(harness.service.reading?.usedPercent)
+        XCTAssertEqual(harness.service.reading?.hasWeeklyPool, false as Bool?)
+        XCTAssertNil(harness.service.weeklyFraction)
+        XCTAssertEqual(harness.service.bottomLabel, "CM")
     }
 
     func testProductBreakdownWithoutOverallDoesNotInventAPercent() async throws {
@@ -173,6 +175,73 @@ final class MockServerIntegrationTests: XCTestCase {
         XCTAssertTrue(harness.service.cursorReading?.resetIsAssumedMonthly == true)
     }
 
+    func testSandSessionIsTheGrokBotWeeklyMeter() async throws {
+        let harness = try makeHarness(sandAccess: Self.futureAccessToken)
+        await harness.service.fetchUsage(refreshCursor: true)
+
+        XCTAssertEqual(try XCTUnwrap(harness.service.dashboardReading?.grokBotPercent), 8, accuracy: 0.001)
+        XCTAssertEqual(try XCTUnwrap(harness.service.dashboardReading?.cursorModelsPercent), 7, accuracy: 0.001)
+        XCTAssertEqual(harness.service.dashboardReading?.otherModelsPercent, 0 as Double?)
+        XCTAssertEqual(harness.service.dashboardReading?.onDemand?.usedCents, 150 as Int64?)
+        XCTAssertEqual(harness.service.dashboardReading?.onDemand?.limitCents, 2000 as Int64?)
+        XCTAssertEqual(harness.service.dashboardReading?.accountEmail, "grokbot-user@example.com" as String?)
+        XCTAssertEqual(harness.service.topLabel, "GB")
+        XCTAssertEqual(harness.service.bottomLabel, "Wk")
+        XCTAssertEqual(harness.service.botFraction ?? -1, 0.08, accuracy: 0.001)
+        XCTAssertEqual(harness.service.weeklyFraction ?? -1, 0.42, accuracy: 0.001)
+        XCTAssertNil(harness.service.cursorReading)
+        let point = try XCTUnwrap(harness.history.history.dataPoints.first)
+        XCTAssertEqual(try XCTUnwrap(point.pctBot), 0.08, accuracy: 0.001)
+        XCTAssertTrue(point.includesWeekly)
+        XCTAssertNil(point.pctCursorModels)
+    }
+
+    func testNoSuperGrokPoolUsesCursorModelsOnTheBottomSlot() async throws {
+        let harness = try makeHarness(sandAccess: Self.futureAccessToken)
+        try await setScenario("omitted_zero")
+        await harness.service.fetchUsage()
+
+        XCTAssertEqual(harness.service.reading?.hasWeeklyPool, false as Bool?)
+        XCTAssertNil(harness.service.weeklyFraction)
+        XCTAssertEqual(harness.service.bottomLabel, "CM")
+        XCTAssertEqual(harness.service.bottomFraction ?? -1, 0.07, accuracy: 0.001)
+        XCTAssertEqual(harness.service.botFraction ?? -1, 0.08, accuracy: 0.001)
+        let point = try XCTUnwrap(harness.history.history.dataPoints.first)
+        XCTAssertFalse(point.includesWeekly)
+        XCTAssertEqual(try XCTUnwrap(point.pctCursorModels), 0.07, accuracy: 0.001)
+        XCTAssertEqual(try XCTUnwrap(point.pctBot), 0.08, accuracy: 0.001)
+    }
+
+    func testSandUnauthorizedDoesNotClearTheWeeklyPoolOrUseTheAdminKey() async throws {
+        let harness = try makeHarness(sandAccess: Self.futureAccessToken)
+        await harness.service.fetchUsage()
+        XCTAssertEqual(try XCTUnwrap(harness.service.reading?.usedPercent), 42, accuracy: 0.001)
+
+        try await setScenario("sand_unauthorized")
+        harness.service.saveCursorSettings(
+            apiKey: "crsr_test_key_123456",
+            email: "person@example.com",
+            organizationID: "",
+            budget: "40"
+        )
+        await harness.service.fetchUsage(refreshCursor: true)
+
+        XCTAssertEqual(try XCTUnwrap(harness.service.reading?.usedPercent), 42, accuracy: 0.001)
+        XCTAssertNil(harness.service.dashboardReading)
+        XCTAssertEqual(harness.service.dashboardError, GrokBotSessionNotice.openGrokBot)
+        XCTAssertNil(harness.service.cursorReading)
+        XCTAssertTrue(harness.service.sandOwnsTopSlot)
+    }
+
+    func testExpiredSandTokenAsksToOpenGrokBot() async throws {
+        let harness = try makeHarness(sandAccess: Self.expiredAccessToken)
+        await harness.service.fetchUsage()
+
+        XCTAssertEqual(harness.service.dashboardError, GrokBotSessionNotice.openGrokBot)
+        XCTAssertNil(harness.service.dashboardReading?.grokBotPercent)
+        XCTAssertEqual(try XCTUnwrap(harness.service.reading?.usedPercent), 42, accuracy: 0.001)
+    }
+
     func testCursorUnauthorizedDoesNotClearTheWeeklyPool() async throws {
         let harness = try makeHarness()
         await harness.service.fetchUsage()
@@ -291,11 +360,15 @@ final class MockServerIntegrationTests: XCTestCase {
         let authURL: URL
     }
 
+    private static let futureAccessToken = "eyJhbGciOiJub25lIiwidHlwIjoiSldUIn0.eyJleHAiOjIwMDAwMDAwMDB9.sig"
+    private static let expiredAccessToken = "eyJhbGciOiJub25lIiwidHlwIjoiSldUIn0.eyJleHAiOjEwMDB9.sig"
+
     private func makeHarness(
         writeAuth: Bool = true,
         token: String = "test-access-token",
         refresh: String? = "test-refresh-token",
-        issuer: String? = nil
+        issuer: String? = nil,
+        sandAccess: String? = nil
     ) throws -> Harness {
         let server = try XCTUnwrap(self.server)
         let directory = FileManager.default.temporaryDirectory
@@ -331,12 +404,21 @@ final class MockServerIntegrationTests: XCTestCase {
         defaults.removePersistentDomain(forName: suite)
         addTeardownBlock { defaults.removePersistentDomain(forName: suite) }
 
+        let secretsURL = directory.appendingPathComponent("sand-secrets.json")
+        if let sandAccess {
+            let payload = ["cursor-access-token": "plaintext:v1:\(sandAccess)"]
+            try JSONSerialization.data(withJSONObject: payload).write(to: secretsURL)
+        }
+
         let history = UsageHistoryService(historyFileURL: directory.appendingPathComponent("history.json"))
         let service = UsageService(
             session: URLSession(configuration: .ephemeral),
             proxyBaseURL: URL(string: "http://127.0.0.1:\(server.port)/v1")!,
             managementBaseURL: URL(string: "http://127.0.0.1:\(server.port)")!,
             cursorBaseURL: URL(string: "http://127.0.0.1:\(server.port)")!,
+            dashboardBaseURL: URL(string: "http://127.0.0.1:\(server.port)")!,
+            sandSecretsURL: secretsURL,
+            keyProvider: MissingKeyProvider(),
             authFileURL: authURL,
             secretStore: MemorySecretStore(),
             defaults: defaults
@@ -344,6 +426,10 @@ final class MockServerIntegrationTests: XCTestCase {
         service.historyService = history
         return Harness(service: service, history: history, authURL: authURL)
     }
+}
+
+private final class MissingKeyProvider: GrokBotKeyProviding {
+    func derivedKey() -> GrokBotKeyState { .missing }
 }
 
 private struct MockServerLaunchError: Error, LocalizedError {

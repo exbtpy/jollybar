@@ -1,19 +1,22 @@
 import Foundation
 import Combine
 
-/// Polls the grok.com weekly pool and, on its own schedule, Cursor Grok Bot.
+/// Polls the grok.com weekly pool and the Grok Bot session on this Mac.
 ///
-/// A failure on one source does not clear the other. Cursor data is aggregated
-/// hourly, so that source is requested at most once an hour unless the user
-/// hits Refresh. A 429 still holds Refresh back for `Retry-After`.
+/// A failure on one source does not clear the other. The Cursor Admin API is
+/// only the fallback when Grok Bot is not signed in here, and that fallback
+/// stays on its hourly schedule. A 429 still holds Refresh back for `Retry-After`.
 @MainActor
 final class UsageService: ObservableObject {
     @Published var reading: GrokBillingReading?
     @Published var management: ManagementSnapshot?
     @Published var cursorReading: CursorGrokBotReading?
+    @Published var dashboardReading: CursorDashboardReading?
+    @Published var dashboardPresence: CursorDashboardPresence = .absent
     @Published var lastError: String?
     @Published var managementError: String?
     @Published var cursorError: String?
+    @Published var dashboardError: String?
     @Published var lastUpdated: Date?
     @Published private(set) var isAuthenticated = false
     @Published private(set) var accountEmail: String?
@@ -28,15 +31,55 @@ final class UsageService: ObservableObject {
     var historyService: UsageHistoryService?
     var notificationService: NotificationService?
 
-    /// 0...1 when a weekly percent is available.
+    /// True when the signed-in grok.com account has a SuperGrok pool.
+    var showsSuperGrokPool: Bool {
+        reading?.hasWeeklyPool == true
+    }
+
+    /// 0...1 when a SuperGrok weekly percent is available.
     var weeklyFraction: Double? {
-        guard let percent = reading?.usedPercent else { return nil }
+        guard showsSuperGrokPool, let percent = reading?.usedPercent else { return nil }
         return min(max(percent / 100.0, 0), 1)
     }
 
-    /// 0...1 when a Grok Bot percent is available. Values above 100% fill the bar.
-    var botFraction: Double? {
-        guard let percent = cursorReading?.usedPercent else { return nil }
+    /// The top bar is the Grok Bot weekly meter when a sand session exists.
+    /// Otherwise it is Admin API spend, labeled separately.
+    var sandOwnsTopSlot: Bool {
+        dashboardPresence != .absent
+    }
+
+    var topLabel: String { sandOwnsTopSlot ? "GB" : (cursorConfigured ? "Sp" : "GB") }
+
+    var bottomLabel: String { showsSuperGrokPool ? "Wk" : "CM" }
+
+    /// 0...1 for the top menu-bar meter.
+    var topFraction: Double? {
+        if sandOwnsTopSlot {
+            return fraction(dashboardReading?.grokBotPercent)
+        }
+        return fraction(cursorReading?.usedPercent)
+    }
+
+    /// 0...1 for the bottom menu-bar meter.
+    var bottomFraction: Double? {
+        if showsSuperGrokPool {
+            return weeklyFraction
+        }
+        return fraction(dashboardReading?.cursorModelsPercent)
+    }
+
+    var companionMood: CompanionMood {
+        let percent = sandOwnsTopSlot ? dashboardReading?.grokBotPercent : cursorReading?.usedPercent
+        let paused = sandOwnsTopSlot ? (dashboardReading?.pausedAtLimit == true) : false
+        return CompanionMood.resolve(usedPercent: percent, pausedAtLimit: paused)
+    }
+
+    /// Kept for callers that mean the top meter. Grok Bot weekly when sand is
+    /// present, otherwise the Admin spend fallback.
+    var botFraction: Double? { topFraction }
+
+    private func fraction(_ percent: Double?) -> Double? {
+        guard let percent else { return nil }
         return min(max(percent / 100.0, 0), 1)
     }
 
@@ -52,6 +95,10 @@ final class UsageService: ObservableObject {
     private let proxyBaseURL: URL
     private let managementBaseURL: URL
     private let cursorBaseURL: URL
+    private let dashboardBaseURL: URL
+    private let sandSecretsURL: URL?
+    private let homeDirectory: URL
+    private let keyProvider: GrokBotKeyProviding
     private let authFileURL: URL
     private let secretStore: SecretStoring
     private let defaults: UserDefaults
@@ -76,6 +123,9 @@ final class UsageService: ObservableObject {
         proxyBaseURL: URL? = nil,
         managementBaseURL: URL? = nil,
         cursorBaseURL: URL? = nil,
+        dashboardBaseURL: URL? = nil,
+        sandSecretsURL: URL? = nil,
+        keyProvider: GrokBotKeyProviding = MacGrokBotKeyProvider(),
         authFileURL: URL? = nil,
         secretStore: SecretStoring = KeychainSecretStore(),
         defaults: UserDefaults = .standard,
@@ -106,6 +156,13 @@ final class UsageService: ObservableObject {
             key: EndpointOverride.cursorKey,
             defaultURL: EndpointOverride.defaultCursorBase
         )
+        self.dashboardBaseURL = dashboardBaseURL ?? EndpointOverride.resolvedURL(
+            key: EndpointOverride.dashboardKey,
+            defaultURL: EndpointOverride.defaultDashboardBase
+        )
+        self.sandSecretsURL = sandSecretsURL ?? EndpointOverride.sandSecretsURL()
+        self.homeDirectory = FileManager.default.homeDirectoryForCurrentUser
+        self.keyProvider = keyProvider
         self.authFileURL = authFileURL ?? EndpointOverride.authFileURL()
         self.secretStore = secretStore
         self.defaults = defaults
@@ -245,15 +302,24 @@ final class UsageService: ObservableObject {
     /// `refreshCursor` skips the hourly cap. It still waits out a Cursor 429.
     func fetchUsage(refreshCursor: Bool = false) async {
         let weeklySample = await fetchWeekly()
-        let cursorSample = await fetchCursor(refresh: refreshCursor)
-        guard weeklySample != nil || cursorSample != nil else { return }
+        await fetchDashboard()
+        let adminSample: Double?
+        if sandOwnsTopSlot {
+            adminSample = nil
+        } else {
+            adminSample = await fetchCursor(refresh: refreshCursor)
+        }
+        let topSample = sandOwnsTopSlot ? fraction(dashboardReading?.grokBotPercent) : adminSample
+        let modelsSample = showsSuperGrokPool ? nil : fraction(dashboardReading?.cursorModelsPercent)
+        guard weeklySample != nil || topSample != nil || modelsSample != nil else { return }
         historyService?.recordDataPoint(
             pctWeekly: weeklyFraction ?? 0,
-            pctBot: botFraction,
-            includesWeekly: weeklyFraction != nil
+            pctBot: topSample,
+            includesWeekly: weeklySample != nil,
+            pctCursorModels: modelsSample
         )
         notificationService?.checkAndNotify(
-            botFraction: cursorSample,
+            botFraction: topSample,
             weeklyFraction: weeklySample
         )
     }
@@ -293,10 +359,14 @@ final class UsageService: ObservableObject {
             self.reading = reading
             lastUpdated = now()
             let sample: Double?
-            if let percent = reading.usedPercent {
+            if reading.hasWeeklyPool, let percent = reading.usedPercent {
                 lastError = nil
                 sample = min(max(percent / 100.0, 0), 1)
+            } else if reading.hasWeeklyPool {
+                lastError = reading.unavailableReason
+                sample = nil
             } else {
+                // Signed in, but this grok.com account has no SuperGrok pool.
                 lastError = reading.unavailableReason
                 sample = nil
             }
@@ -306,6 +376,40 @@ final class UsageService: ObservableObject {
             }
             await fetchManagement()
             return sample
+        }
+    }
+
+    private func fetchDashboard() async {
+        let provider = CursorDashboardProvider(
+            baseURL: dashboardBaseURL,
+            secretsURL: sandSecretsURL,
+            homeDirectory: homeDirectory,
+            session: session,
+            now: now,
+            keyProvider: keyProvider,
+            fileManager: .default
+        )
+        switch await provider.fetch() {
+        case .notSignedIn:
+            dashboardPresence = .absent
+            dashboardReading = nil
+            dashboardError = nil
+        case .needsGrokBot(let message):
+            dashboardPresence = .needsRefresh
+            dashboardReading = nil
+            dashboardError = message
+        case .keychainDenied(let message):
+            dashboardPresence = .keychainDenied
+            dashboardReading = nil
+            dashboardError = message
+        case .failed(let message):
+            dashboardPresence = .failed
+            dashboardError = message
+        case .ready(let reading):
+            dashboardPresence = .ready
+            dashboardReading = reading
+            dashboardError = nil
+            lastUpdated = now()
         }
     }
 

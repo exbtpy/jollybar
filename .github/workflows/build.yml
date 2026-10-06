@@ -20,3 +20,11 @@ jobs:
 
       - name: Test
         run: cd macos && swift test
+
+      - name: Upload pet snapshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pet-snapshots
+          path: macos/.build/pet-snapshots/*.png
+          if-no-files-found: ignore

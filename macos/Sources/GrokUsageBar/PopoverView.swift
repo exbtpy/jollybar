@@ -7,6 +7,8 @@ struct PopoverView: View {
     @ObservedObject var notificationService: NotificationService
     @ObservedObject var appUpdater: AppUpdater
     @AppStorage("setupComplete") private var setupComplete = false
+    @AppStorage(MenuTheme.defaultsKey) private var menuThemeRaw = MenuTheme.classic.rawValue
+    @State private var petAnimating = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -33,7 +35,7 @@ struct PopoverView: View {
                 Text(tier)
                     .font(.caption)
                     .foregroundStyle(.secondary)
-            } else if let email = service.accountEmail {
+            } else if let email = service.accountEmail ?? service.dashboardReading?.accountEmail {
                 Text(email)
                     .font(.caption)
                     .foregroundStyle(.secondary)
@@ -44,35 +46,45 @@ struct PopoverView: View {
 
     @ViewBuilder
     private var usageView: some View {
+        if MenuTheme(rawValue: menuThemeRaw) == .companion {
+            CompanionPetView(mood: service.companionMood, animating: petAnimating)
+                .frame(maxWidth: .infinity)
+                .background(PopoverWindowVisible(isVisible: $petAnimating))
+                .onDisappear { petAnimating = false }
+        }
+
         meterRow(
-            title: "Grok Bot",
-            percent: service.cursorReading?.usedPercent,
-            fraction: service.botFraction,
-            detail: service.cursorReading?.amountDetail,
-            reset: service.cursorReading?.resetsAt,
+            title: service.sandOwnsTopSlot ? "Grok Bot" : (service.cursorConfigured ? "Grok Bot spend" : "Grok Bot"),
+            percent: service.sandOwnsTopSlot ? service.dashboardReading?.grokBotPercent : service.cursorReading?.usedPercent,
+            fraction: service.topFraction,
+            detail: service.sandOwnsTopSlot ? nil : service.cursorReading?.amountDetail,
+            reset: service.sandOwnsTopSlot ? service.dashboardReading?.resetsAt : service.cursorReading?.resetsAt,
             footnote: botFootnote,
             status: botStatus
         )
 
         meterRow(
-            title: "Weekly pool",
-            percent: service.reading?.usedPercent,
-            fraction: service.weeklyFraction,
+            title: service.showsSuperGrokPool ? "SuperGrok" : "Cursor Models",
+            percent: service.showsSuperGrokPool ? service.reading?.usedPercent : service.dashboardReading?.cursorModelsPercent,
+            fraction: service.bottomFraction,
             detail: nil,
-            reset: service.reading?.resetsAt,
-            footnote: weeklyFootnote,
-            status: weeklyStatus
+            reset: service.showsSuperGrokPool ? service.reading?.resetsAt : nil,
+            footnote: nil,
+            status: bottomStatus
         )
 
-        if hasWeeklyDetails {
-            DisclosureGroup("By product and credits") {
-                weeklyDetails
+        if hasDetails {
+            DisclosureGroup("Details") {
+                details
             }
             .font(.caption)
         }
 
         Divider()
-        UsageChartView(historyService: historyService)
+        UsageChartView(
+            historyService: historyService,
+            showsWeeklyPool: service.showsSuperGrokPool
+        )
 
         if let updaterError = appUpdater.lastError {
             Divider()
@@ -115,39 +127,61 @@ struct PopoverView: View {
     }
 
     private var botFootnote: String? {
-        guard service.cursorReading?.resetIsAssumedMonthly == true else { return nil }
+        guard !service.sandOwnsTopSlot, service.cursorReading?.resetIsAssumedMonthly == true else { return nil }
         return "Cycle end is the next calendar month after the billing-cycle start."
     }
 
     private var botStatus: MeterStatus? {
-        if let error = service.cursorError {
-            return MeterStatus(text: error, isError: true)
+        switch service.dashboardPresence {
+        case .absent:
+            if service.cursorConfigured {
+                if let error = service.cursorError {
+                    return MeterStatus(text: error, isError: true)
+                }
+                return nil
+            }
+            return MeterStatus(text: GrokBotSessionNotice.notSignedIn, isError: false)
+        case .needsRefresh, .keychainDenied, .failed:
+            return MeterStatus(text: service.dashboardError ?? GrokBotSessionNotice.openGrokBot, isError: true)
+        case .ready:
+            if let reason = service.dashboardReading?.grokBotUnavailableReason {
+                return MeterStatus(text: reason, isError: true)
+            }
+            return nil
         }
-        if !service.cursorConfigured {
-            return MeterStatus(text: "Add a Cursor API key in Settings.", isError: false)
+    }
+
+    private var bottomStatus: MeterStatus? {
+        if service.showsSuperGrokPool {
+            if let error = service.lastError {
+                let hint = error.localizedCaseInsensitiveContains("grok login")
+                return MeterStatus(text: error, isError: !hint)
+            }
+            if !service.isAuthenticated {
+                return MeterStatus(text: "Run grok login", isError: false)
+            }
+            return nil
+        }
+        if let reason = service.dashboardReading?.cursorModelsUnavailableReason,
+           service.dashboardPresence == .ready || service.dashboardPresence == .failed {
+            return MeterStatus(text: reason, isError: service.dashboardReading?.cursorModelsPercent == nil)
+        }
+        if service.dashboardPresence == .absent {
+            return MeterStatus(text: "Cursor Models usage appears after Grok Bot is signed in.", isError: false)
+        }
+        if service.dashboardError != nil {
+            return MeterStatus(text: "Cursor Models unavailable.", isError: false)
         }
         return nil
     }
 
-    private var weeklyFootnote: String? {
-        guard service.reading?.assumedZero == true else { return nil }
-        return "The weekly percent field was omitted for this period, so this shows 0% used."
-    }
-
-    private var weeklyStatus: MeterStatus? {
-        if let error = service.lastError {
-            let hint = error.localizedCaseInsensitiveContains("grok login")
-            return MeterStatus(text: error, isError: !hint)
-        }
-        if !service.isAuthenticated {
-            return MeterStatus(text: "Run grok login", isError: false)
-        }
-        return nil
-    }
-
-    private var hasWeeklyDetails: Bool {
+    private var hasDetails: Bool {
+        if service.dashboardReading?.otherModelsPercent != nil { return true }
+        if service.dashboardReading?.onDemandKnown == true { return true }
+        if service.showsSuperGrokPool, service.dashboardReading?.cursorModelsPercent != nil { return true }
+        if !service.showsSuperGrokPool, service.lastError != nil { return true }
         let products = service.reading?.products ?? []
-        if !products.isEmpty { return true }
+        if service.showsSuperGrokPool, !products.isEmpty { return true }
         if service.reading?.extraCreditsCents != nil { return true }
         if let cap = service.reading?.onDemandCapCents, cap > 0 || (service.reading?.onDemandUsedCents ?? 0) > 0 {
             return true
@@ -156,8 +190,32 @@ struct PopoverView: View {
     }
 
     @ViewBuilder
-    private var weeklyDetails: some View {
-        let products = service.reading?.products ?? []
+    private var details: some View {
+        if !service.showsSuperGrokPool, let error = service.lastError {
+            Text(error)
+                .font(.caption2)
+                .foregroundStyle(error.localizedCaseInsensitiveContains("grok login") ? Color.secondary : Color.red)
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(.top, 4)
+        }
+        if service.showsSuperGrokPool, let percent = service.dashboardReading?.cursorModelsPercent {
+            labeled("Cursor Models", "\(Int(round(percent)))%")
+                .padding(.top, 4)
+        }
+        if let percent = service.dashboardReading?.otherModelsPercent {
+            labeled("Other Models", "\(Int(round(percent)))%")
+        }
+        if service.dashboardReading?.onDemandKnown == true {
+            if let spend = service.dashboardReading?.onDemand {
+                labeled(
+                    "On-demand",
+                    "\(USDFormat.cents(spend.usedCents)) / \(USDFormat.cents(spend.limitCents))"
+                )
+            } else {
+                labeled("On-demand", "No cap")
+            }
+        }
+        let products = service.showsSuperGrokPool ? (service.reading?.products ?? []) : []
         if !products.isEmpty {
             productRows(products)
                 .padding(.top, 4)
@@ -173,7 +231,7 @@ struct PopoverView: View {
         }
         if let cap = service.reading?.onDemandCapCents, cap > 0 || (service.reading?.onDemandUsedCents ?? 0) > 0 {
             HStack {
-                Text("On-demand")
+                Text("grok.com on-demand")
                 Spacer()
                 Text("\(USDFormat.cents(service.reading?.onDemandUsedCents ?? 0)) / \(USDFormat.cents(cap))")
                     .monospacedDigit()
@@ -320,7 +378,7 @@ private struct SetupView: View {
     var body: some View {
         Text("Welcome")
             .font(.headline)
-        Text("Grok Usage Bar shows Cursor Grok Bot spend and the grok.com weekly pool, each on its own bar.")
+        Text("Grok Usage Bar shows Grok Bot weekly usage and, when your grok.com account has one, the SuperGrok pool.")
             .font(.subheadline)
             .foregroundStyle(.secondary)
             .fixedSize(horizontal: false, vertical: true)

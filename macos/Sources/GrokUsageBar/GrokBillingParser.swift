@@ -23,10 +23,11 @@ struct GrokBillingReading: Equatable {
     /// Used percent of the shared weekly pool, 0...100.
     /// Nil when this response did not contain a usable weekly meter.
     let usedPercent: Double?
-    /// True when `creditUsagePercent` was omitted and a confirmed weekly period
-    /// with no positive product percent was treated as 0%. proto3 JSON omits
-    /// zero-valued scalars; see the parser. This is an assumption.
-    let assumedZero: Bool
+    /// True only when this body has a SuperGrok pool: `creditUsagePercent` is
+    /// present (including an explicit 0), or a product row has `usagePercent`.
+    /// A weekly `currentPeriod` by itself is not a pool. A free grok.com
+    /// account can return period dates and cent fields with neither.
+    let hasWeeklyPool: Bool
     let resetsAt: Date?
     let periodType: String?
     let products: [GrokProductUsage]
@@ -69,10 +70,14 @@ struct GrokBillingReading: Equatable {
 ///   credits endpoint's primary meter is that pool.
 /// - `USAGE_PERIOD_TYPE_MONTHLY` (or any other explicit type) is not shown as
 ///   the weekly bar.
-/// - An omitted `creditUsagePercent` plus a weekly period that has `start` and
-///   `end`, and no product percent above 0, is treated as 0% used. proto3 JSON
-///   omits zero scalars. If a real account omits the field while products
-///   report usage, the overall percent stays nil instead of being invented.
+/// - A pool exists only when `creditUsagePercent` is present, including an
+///   explicit 0, or when any `productUsage` row includes `usagePercent`.
+///   Period dates, `prepaidBalance`, and on-demand cent fields are not a pool.
+///   This matches a live credits body from the owner's Mac (2026-10-06): weekly
+///   `currentPeriod`, cent fields, and no percent. Grok-Rate-Limit-Display
+///   treats period dates as a signal and would show 0% for that body; this
+///   parser does not. If products report a percent and the overall percent is
+///   missing, the overall bar stays empty and `hasWeeklyPool` stays true.
 /// - `prepaidBalance` is Extra Usage Credits, in USD cents. `val` may be a
 ///   number (CLI `Cent` is i64) or a string (Management API cents are strings).
 ///   `{}` means 0, matching the CLI's proto3 comment.
@@ -106,13 +111,10 @@ enum GrokBillingParser {
 
         let period = config["currentPeriod"] as? [String: Any]
         let periodType = period?["type"] as? String
-        let periodStart = (period?["start"] as? String).flatMap(DateParsing.parseISO8601)
         let periodEnd = (period?["end"] as? String).flatMap(DateParsing.parseISO8601)
         let billingPeriodEnd = (config["billingPeriodEnd"] as? String).flatMap(DateParsing.parseISO8601)
 
-        let explicitWeekly = periodType == weeklyPeriod
         let explicitOtherPeriod = periodType != nil && periodType != weeklyPeriod
-        let confirmedWeeklyWindow = explicitWeekly && periodStart != nil && periodEnd != nil
 
         let products = parseProducts(config["productUsage"])
         let extra = JSONValues.cents(config["prepaidBalance"])
@@ -130,12 +132,12 @@ enum GrokBillingParser {
 
         func reading(
             usedPercent: Double?,
-            assumedZero: Bool,
+            hasWeeklyPool: Bool,
             reason: String?
         ) -> GrokBillingReading {
             GrokBillingReading(
                 usedPercent: usedPercent,
-                assumedZero: assumedZero,
+                hasWeeklyPool: hasWeeklyPool,
                 resetsAt: resetsAt,
                 periodType: periodType,
                 products: products,
@@ -151,44 +153,36 @@ enum GrokBillingParser {
         if explicitOtherPeriod {
             return reading(
                 usedPercent: nil,
-                assumedZero: false,
+                hasWeeklyPool: false,
                 reason: "This account reported \(periodType ?? "a non-weekly period"), not the shared weekly pool."
             )
         }
 
-        if let rawPercent = JSONValues.double(config["creditUsagePercent"]) {
-            guard let percent = normalizedPercent(rawPercent) else {
+        if config.keys.contains("creditUsagePercent"), !(config["creditUsagePercent"] is NSNull) {
+            guard let rawPercent = JSONValues.double(config["creditUsagePercent"]),
+                  let percent = normalizedPercent(rawPercent) else {
                 return reading(
                     usedPercent: nil,
-                    assumedZero: false,
+                    hasWeeklyPool: false,
                     reason: "creditUsagePercent was not a usable percentage."
                 )
             }
-            return reading(usedPercent: percent, assumedZero: false, reason: nil)
+            return reading(usedPercent: percent, hasWeeklyPool: true, reason: nil)
         }
 
-        let productHasUsage = products.contains { ($0.usagePercent ?? 0) > 0 }
-        if productHasUsage {
+        let productHasPercent = products.contains { $0.usagePercent != nil }
+        if productHasPercent {
             return reading(
                 usedPercent: nil,
-                assumedZero: false,
+                hasWeeklyPool: true,
                 reason: "The billing response listed product usage but no overall creditUsagePercent."
             )
         }
 
-        if confirmedWeeklyWindow {
-            // Assumption: omitted percent + a real weekly window + no product
-            // usage means 0% used (proto3 drops zeros). Not a fabricated meter
-            // for accounts that simply lack the weekly pool.
-            return reading(usedPercent: 0, assumedZero: true, reason: nil)
-        }
-
+        // No percent field. A weekly window, including the owner's live body,
+        // is not a SuperGrok pool. The bottom slot can show Cursor Models.
         _ = now
-        return reading(
-            usedPercent: nil,
-            assumedZero: false,
-            reason: "The billing response did not include a weekly usage percent."
-        )
+        return reading(usedPercent: nil, hasWeeklyPool: false, reason: nil)
     }
 
     static func displayName(for rawProduct: String) -> String {
@@ -203,6 +197,21 @@ enum GrokBillingParser {
             "GROKCHAT": "Grok Chat",
             "GROK_CHAT": "Grok Chat",
             "PRODUCT_GROK_CHAT": "Grok Chat",
+            "CHAT": "Chat",
+            "GROKAPPBUILDER": "App Builder",
+            "GROK_APP_BUILDER": "App Builder",
+            "PRODUCT_GROK_APP_BUILDER": "App Builder",
+            "APPBUILDER": "App Builder",
+            "APP_BUILDER": "App Builder",
+            "GROKPLUGINS": "Grok Plugins",
+            "GROK_PLUGINS": "Grok Plugins",
+            "PRODUCT_GROK_PLUGINS": "Grok Plugins",
+            "PLUGINS": "Grok Plugins",
+            "PLUGIN": "Grok Plugins",
+            "THIRDPARTY": "3rd Party",
+            "THIRD_PARTY": "3rd Party",
+            "3RDPARTY": "3rd Party",
+            "3RD_PARTY": "3rd Party",
             "GROKIMAGINE": "Imagine",
             "GROK_IMAGINE": "Imagine",
             "PRODUCT_GROK_IMAGINE": "Imagine",
@@ -271,7 +280,7 @@ enum GrokBillingParser {
     private static func empty(reason: String) -> GrokBillingReading {
         GrokBillingReading(
             usedPercent: nil,
-            assumedZero: false,
+            hasWeeklyPool: false,
             resetsAt: nil,
             periodType: nil,
             products: [],

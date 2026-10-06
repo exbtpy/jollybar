@@ -11,11 +11,23 @@ struct SettingsWindowContent: View {
     @State private var cursorEmail = ""
     @State private var cursorOrganizationID = ""
     @State private var cursorBudget = ""
+    @AppStorage(MenuTheme.defaultsKey) private var menuThemeRaw = MenuTheme.classic.rawValue
 
     var body: some View {
         Form {
             Section("General") {
                 LaunchAtLoginToggle()
+
+                Picker("Menu bar", selection: Binding(
+                    get: { menuThemeRaw },
+                    set: { menuThemeRaw = $0 }
+                )) {
+                    Text("Classic").tag(MenuTheme.classic.rawValue)
+                    Text("Companion").tag(MenuTheme.companion.rawValue)
+                }
+                Text("Classic keeps the two bars and a chart glyph. Companion adds a pet that follows Grok Bot weekly usage. The pet animation runs only while the menu is open.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
 
                 Picker("Polling Interval", selection: Binding(
                     get: { service.pollingMinutes },
@@ -49,7 +61,10 @@ struct SettingsWindowContent: View {
             .disabled(!notificationService.isAvailable)
 
             Section("Grok Bot (Cursor)") {
-                Text("A Cursor API key reads Grok Bot spend for this account. It is stored in the Keychain. Usage events are aggregated hourly, so this source is polled at most once an hour. Teams or Enterprise and an admin or usage scope are required. HTTP 401 and 403 are shown on the Grok Bot row.")
+                Text("Grok Bot weekly usage is read from the Grok Bot app on this Mac. The access token stays in Grok Bot’s files. This app does not read the refresh token and does not sign you in again. If the session expires, open Grok Bot.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Text("Optional fallback for Teams and Enterprise: a Cursor API key reads Grok Bot spend when Grok Bot is not signed in on this Mac. It is stored in the Keychain. That source is polled at most once an hour and is labeled spend, not the weekly meter.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                 SecureField(service.cursorConfigured ? "Cursor API key (saved)" : "Cursor API key", text: $cursorKey)

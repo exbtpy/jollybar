@@ -3,6 +3,9 @@ import Charts
 
 struct UsageChartView: View {
     @ObservedObject var historyService: UsageHistoryService
+    /// When false, the Weekly series is omitted. A grok.com account with no
+    /// SuperGrok pool used to leave a 0% orange line in history.
+    var showsWeeklyPool: Bool
     @State private var selectedRange: TimeRange = .day1
     @State private var hoverDate: Date?
 
@@ -17,41 +20,46 @@ struct UsageChartView: View {
             .labelsHidden()
 
             let points = historyService.downsampledPoints(for: selectedRange)
+            let series = UsageChartSeries.displayPoints(
+                from: points,
+                includeWeekly: showsWeeklyPool,
+                domain: selectedRange.interval
+            )
 
-            if points.isEmpty {
+            if series.isEmpty {
                 Text("No history data yet.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity, minHeight: 120, alignment: .center)
             } else {
-                chartView(points: points)
+                chartView(points: points, series: series)
             }
         }
     }
 
     @ViewBuilder
-    private func chartView(points: [UsageDataPoint]) -> some View {
+    private func chartView(points: [UsageDataPoint], series: [UsageChartSeries.Point]) -> some View {
         let interpolated = hoverDate.flatMap { date in
             hoveredValues(at: date, in: points)
         }
+        let seriesNames = UsageChartSeries.orderedNames(in: series)
 
         Chart {
-            ForEach(points.filter { $0.pctBot != nil }) { point in
+            ForEach(series) { point in
                 LineMark(
                     x: .value("Time", point.timestamp),
-                    y: .value("Usage", (point.pctBot ?? 0) * 100)
+                    y: .value("Usage", point.percent)
                 )
-                .foregroundStyle(by: .value("Window", "Grok Bot"))
+                .foregroundStyle(by: .value("Window", point.series))
                 .interpolationMethod(.catmullRom)
-            }
+                .lineStyle(StrokeStyle(lineWidth: 2))
 
-            ForEach(points.filter(\.includesWeekly)) { point in
-                LineMark(
+                PointMark(
                     x: .value("Time", point.timestamp),
-                    y: .value("Usage", point.pctWeekly * 100)
+                    y: .value("Usage", point.percent)
                 )
-                .foregroundStyle(by: .value("Window", "Weekly"))
-                .interpolationMethod(.catmullRom)
+                .foregroundStyle(by: .value("Window", point.series))
+                .symbolSize(point.synthesized ? 16 : (point.series == UsageChartSeries.bot ? 64 : 110))
             }
 
             if let iv = interpolated {
@@ -73,6 +81,14 @@ struct UsageChartView: View {
                         y: .value("Usage", pctBot * 100)
                     )
                     .foregroundStyle(Color.blue)
+                    .symbolSize(24)
+                }
+                if let pctModels = iv.pctCursorModels {
+                    PointMark(
+                        x: .value("Time", iv.date),
+                        y: .value("Usage", pctModels * 100)
+                    )
+                    .foregroundStyle(Color.teal)
                     .symbolSize(24)
                 }
             }
@@ -97,11 +113,11 @@ struct UsageChartView: View {
                 AxisGridLine()
             }
         }
-        .chartForegroundStyleScale([
-            "Grok Bot": Color.blue,
-            "Weekly": Color.orange
-        ])
-        .chartLegend(.visible)
+        .chartForegroundStyleScale(
+            domain: seriesNames,
+            range: seriesNames.map { UsageChartSeries.color(for: $0) }
+        )
+        .chartLegend(seriesNames.isEmpty ? .hidden : .visible)
         .chartPlotStyle { plot in
             plot.clipped()
         }
@@ -119,19 +135,26 @@ struct UsageChartView: View {
     }
 
     private func hoveredValues(at date: Date, in points: [UsageDataPoint]) -> UsageChartInterpolatedValues? {
-        let weeklyPoints = points.filter(\.includesWeekly)
+        let weeklyPoints = showsWeeklyPool ? points.filter(\.includesWeekly) : []
         let botPoints = points.compactMap { point -> UsageDataPoint? in
             guard let pctBot = point.pctBot else { return nil }
             return UsageDataPoint(timestamp: point.timestamp, pctWeekly: pctBot)
         }
+        let modelPoints = points.compactMap { point -> UsageDataPoint? in
+            guard let pct = point.pctCursorModels else { return nil }
+            return UsageDataPoint(timestamp: point.timestamp, pctWeekly: pct)
+        }
         let weekly = UsageChartInterpolation.interpolateValues(at: date, in: weeklyPoints)
         let bot = UsageChartInterpolation.interpolateValues(at: date, in: botPoints)
-        guard weekly != nil || bot != nil else { return nil }
+        let models = UsageChartInterpolation.interpolateValues(at: date, in: modelPoints)
+        guard weekly != nil || bot != nil || models != nil else { return nil }
         return UsageChartInterpolatedValues(
             date: date,
             pctWeekly: weekly?.pctWeekly ?? 0,
             pctBot: bot?.pctWeekly,
-            showsWeekly: weekly != nil
+            showsWeekly: weekly != nil,
+            pctCursorModels: models?.pctWeekly,
+            showsCursorModels: models != nil
         )
     }
 
@@ -150,6 +173,11 @@ struct UsageChartView: View {
                 Text("Weekly \(Int(round(values.pctWeekly * 100)))%")
                     .font(.system(size: 9, weight: .medium))
                     .foregroundStyle(.orange)
+            }
+            if values.showsCursorModels, let pct = values.pctCursorModels {
+                Text("Cursor Models \(Int(round(pct * 100)))%")
+                    .font(.system(size: 9, weight: .medium))
+                    .foregroundStyle(.teal)
             }
         }
         .padding(.horizontal, 6)
@@ -189,12 +217,23 @@ struct UsageChartInterpolatedValues {
     let pctWeekly: Double
     var pctBot: Double?
     var showsWeekly: Bool
+    var pctCursorModels: Double?
+    var showsCursorModels: Bool
 
-    init(date: Date, pctWeekly: Double, pctBot: Double? = nil, showsWeekly: Bool = true) {
+    init(
+        date: Date,
+        pctWeekly: Double,
+        pctBot: Double? = nil,
+        showsWeekly: Bool = true,
+        pctCursorModels: Double? = nil,
+        showsCursorModels: Bool = false
+    ) {
         self.date = date
         self.pctWeekly = pctWeekly
         self.pctBot = pctBot
         self.showsWeekly = showsWeekly
+        self.pctCursorModels = pctCursorModels
+        self.showsCursorModels = showsCursorModels
     }
 }
 
@@ -244,5 +283,98 @@ enum UsageChartInterpolation {
 
     private static func clampToUnitInterval(_ value: Double) -> Double {
         min(max(value, 0), 1)
+    }
+}
+
+/// One drawn sample. Each series gets its own id, because Swift Charts drops
+/// marks that share a data-point id. A lone real sample is paired with a
+/// display-only point a short time earlier so the line exists before the
+/// second poll.
+enum UsageChartSeries {
+    struct Point: Identifiable {
+        let id: String
+        let timestamp: Date
+        /// 0...100.
+        let percent: Double
+        let series: String
+        /// True for the extra point that makes a one-sample series visible.
+        let synthesized: Bool
+    }
+
+    static let bot = "Grok Bot"
+    static let weekly = "Weekly"
+    static let cursorModels = "Cursor Models"
+    /// Legend order. Paint order is the reverse so the Grok Bot dot sits on top
+    /// when Cursor Models is only a percent away.
+    private static let legendOrder = [bot, weekly, cursorModels]
+    private static let paintOrder = [cursorModels, weekly, bot]
+
+    static func color(for series: String) -> Color {
+        switch series {
+        case bot: return .blue
+        case weekly: return .orange
+        case cursorModels: return .teal
+        default: return .gray
+        }
+    }
+
+    static func orderedNames(in points: [Point]) -> [String] {
+        let present = Set(points.map(\.series))
+        return legendOrder.filter(present.contains)
+    }
+
+    static func displayPoints(
+        from dataPoints: [UsageDataPoint],
+        includeWeekly: Bool,
+        domain: TimeInterval
+    ) -> [Point] {
+        var grouped: [String: [Point]] = [:]
+        for point in dataPoints {
+            if let botFraction = point.pctBot {
+                append(bot, fraction: botFraction, point: point, into: &grouped)
+            }
+            if includeWeekly, point.includesWeekly {
+                append(weekly, fraction: point.pctWeekly, point: point, into: &grouped)
+            }
+            if let models = point.pctCursorModels {
+                append(cursorModels, fraction: models, point: point, into: &grouped)
+            }
+        }
+
+        // Long enough to read on a one-day axis, short enough not to invent a trend.
+        let lead = min(max(domain * 0.08, 15 * 60), 3 * 60 * 60)
+        var drawn: [Point] = []
+        for name in paintOrder {
+            guard var samples = grouped[name], !samples.isEmpty else { continue }
+            samples.sort { $0.timestamp < $1.timestamp }
+            if samples.count == 1, let only = samples.first {
+                let anchor = Point(
+                    id: only.id + "-lead",
+                    timestamp: only.timestamp.addingTimeInterval(-lead),
+                    percent: only.percent,
+                    series: name,
+                    synthesized: true
+                )
+                samples.insert(anchor, at: 0)
+            }
+            drawn.append(contentsOf: samples)
+        }
+        return drawn
+    }
+
+    private static func append(
+        _ series: String,
+        fraction: Double,
+        point: UsageDataPoint,
+        into grouped: inout [String: [Point]]
+    ) {
+        let sample = Point(
+            id: "\(point.id.uuidString)-\(series)",
+            timestamp: point.timestamp,
+            percent: min(max(fraction, 0), 1) * 100,
+            series: series,
+            synthesized: false
+        )
+        grouped[series, default: []].append(sample)
     }
 }

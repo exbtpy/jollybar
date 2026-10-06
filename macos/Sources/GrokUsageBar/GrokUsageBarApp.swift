@@ -6,6 +6,7 @@ struct GrokUsageBarApp: App {
     @StateObject private var historyService = UsageHistoryService()
     @StateObject private var notificationService = NotificationService()
     @StateObject private var appUpdater = AppUpdater()
+    @AppStorage(MenuTheme.defaultsKey) private var menuThemeRaw = MenuTheme.classic.rawValue
 
     var body: some Scene {
         MenuBarExtra {
@@ -17,8 +18,12 @@ struct GrokUsageBarApp: App {
             )
         } label: {
             Image(nsImage: renderIcon(
-                botFraction: service.botFraction,
-                weeklyFraction: service.weeklyFraction
+                topFraction: service.topFraction,
+                topLabel: service.topLabel,
+                bottomFraction: service.bottomFraction,
+                bottomLabel: service.bottomLabel,
+                theme: MenuTheme(rawValue: menuThemeRaw) ?? .classic,
+                mood: service.companionMood
             ))
                 .task {
                     if service.isAuthenticated && !UserDefaults.standard.bool(forKey: "setupComplete") {

@@ -4,11 +4,14 @@ enum EndpointOverride {
     static let proxyKey = "GROK_USAGE_BAR_PROXY_BASE"
     static let managementKey = "GROK_USAGE_BAR_MANAGEMENT_BASE"
     static let cursorKey = "GROK_USAGE_BAR_CURSOR_BASE"
+    static let dashboardKey = "GROK_USAGE_BAR_CURSOR_DASHBOARD_BASE"
     static let authFileKey = "GROK_USAGE_BAR_AUTH_FILE"
+    static let sandSecretsKey = "GROK_USAGE_BAR_SAND_SECRETS"
 
     static let defaultProxyBase = URL(string: "https://cli-chat-proxy.grok.com/v1")!
     static let defaultManagementBase = URL(string: "https://management-api.x.ai")!
     static let defaultCursorBase = URL(string: "https://api.cursor.com")!
+    static let defaultDashboardBase = URL(string: "https://api2.cursor.sh")!
 
     nonisolated private static let loopbackHosts: Set<String> = ["localhost", "127.0.0.1", "::1"]
 
@@ -29,6 +32,17 @@ enum EndpointOverride {
             return defaultURL
         }
         return url
+    }
+
+    /// Absolute path to one `sand-secrets.json`. When set, home-directory
+    /// candidates are not scanned. A missing file means Grok Bot is signed out.
+    static func sandSecretsURL(
+        environment: [String: String] = ProcessInfo.processInfo.environment,
+        fileManager: FileManager = .default
+    ) -> URL? {
+        let raw = environment[sandSecretsKey]?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        guard !raw.isEmpty else { return nil }
+        return expandingTilde(raw, fileManager: fileManager)
     }
 
     static func authFileURL(
