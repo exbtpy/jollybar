@@ -37,8 +37,17 @@ verify_app_bundle() {
     echo "==> Verifying packaged resources..."
     [[ -f "$app_plist" ]] || { echo "Error: missing Info.plist"; exit 1; }
     [[ -d "$resource_bundle" ]] || { echo "Error: missing SwiftPM resource bundle"; exit 1; }
-    [[ -f "$resource_bundle/Info.plist" ]] || { echo "Error: missing resource bundle Info.plist"; exit 1; }
-    [[ -f "$resource_bundle/en.lproj/Localizable.strings" ]] || { echo "Error: missing packaged localization resource"; exit 1; }
+    # `swift build` writes a flat bundle. `swift build --arch` (XCBuild) writes
+    # a normal macOS bundle with Contents/Info.plist and Contents/Resources.
+    if [[ -f "$resource_bundle/Info.plist" && -f "$resource_bundle/en.lproj/Localizable.strings" ]]; then
+        :
+    elif [[ -f "$resource_bundle/Contents/Info.plist" && -f "$resource_bundle/Contents/Resources/en.lproj/Localizable.strings" ]]; then
+        :
+    else
+        echo "Error: resource bundle is missing Info.plist or Localizable.strings"
+        find "$resource_bundle" -print
+        exit 1
+    fi
     [[ -d "$sparkle_framework" ]] || { echo "Error: missing Sparkle.framework"; exit 1; }
 
     local bundle_id display_name executable
