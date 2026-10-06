@@ -443,14 +443,17 @@ private final class MockServer {
         }
         defer { close(fd) }
         var reuse: Int32 = 1
+        let reuseSize = socklen_t(MemoryLayout<Int32>.size)
         _ = withUnsafePointer(to: &reuse) { pointer in
-            setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, pointer, socklen_t(MemoryLayout.size(ofValue: reuse)))
+            setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, pointer, reuseSize)
         }
         var addr = sockaddr_in()
         addr.sin_len = UInt8(MemoryLayout<sockaddr_in>.size)
         addr.sin_family = sa_family_t(AF_INET)
         addr.sin_port = 0
-        _ = "127.0.0.1".withCString { inet_pton(AF_INET, $0, &addr.sin_addr) }
+        var ipv4 = in_addr()
+        _ = inet_pton(AF_INET, "127.0.0.1", &ipv4)
+        addr.sin_addr = ipv4
         let bound = withUnsafePointer(to: &addr) {
             $0.withMemoryRebound(to: sockaddr.self, capacity: 1) { pointer in
                 bind(fd, pointer, socklen_t(MemoryLayout<sockaddr_in>.size))
@@ -498,7 +501,9 @@ private final class MockServer {
         addr.sin_len = UInt8(MemoryLayout<sockaddr_in>.size)
         addr.sin_family = sa_family_t(AF_INET)
         addr.sin_port = in_port_t(port).bigEndian
-        _ = "127.0.0.1".withCString { inet_pton(AF_INET, $0, &addr.sin_addr) }
+        var ipv4 = in_addr()
+        _ = inet_pton(AF_INET, "127.0.0.1", &ipv4)
+        addr.sin_addr = ipv4
         let result = withUnsafePointer(to: &addr) {
             $0.withMemoryRebound(to: sockaddr.self, capacity: 1) { pointer in
                 connect(fd, pointer, socklen_t(MemoryLayout<sockaddr_in>.size))
