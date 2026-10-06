@@ -1,3 +1,4 @@
+import Darwin
 import XCTest
 @testable import GrokUsageBar
 
@@ -345,20 +346,25 @@ final class MockServerIntegrationTests: XCTestCase {
     }
 }
 
-private struct MockServerLaunchError: Error, CustomStringConvertible {
-    let description: String
-    init(_ description: String) { self.description = description }
+private struct MockServerLaunchError: Error, LocalizedError {
+    let message: String
+    var errorDescription: String? { message }
+    init(_ message: String) { self.message = message }
 }
 
 private final class MockServer {
     let port: Int
     private let process: Process
+    private let logHandle: FileHandle
+    private let logURL: URL
 
     var baseURL: URL { URL(string: "http://127.0.0.1:\(port)")! }
 
-    private init(port: Int, process: Process) {
+    private init(port: Int, process: Process, logHandle: FileHandle, logURL: URL) {
         self.port = port
         self.process = process
+        self.logHandle = logHandle
+        self.logURL = logURL
     }
 
     static func start() throws -> MockServer {
@@ -368,70 +374,137 @@ private final class MockServer {
         guard FileManager.default.fileExists(atPath: script.path) else {
             throw XCTSkip("mock-server.py not found at \(script.path)")
         }
+        guard let python = resolvedPython() else {
+            throw MockServerLaunchError("python3 was not on PATH. CI should run actions/setup-python before swift test.")
+        }
 
-        let portFile = FileManager.default.temporaryDirectory
-            .appendingPathComponent("grok-mock-port-\(UUID().uuidString)")
-        defer { try? FileManager.default.removeItem(at: portFile) }
+        // Bind a port here so the test does not have to scrape a banner out of
+        // a pipe. The previous runner never delivered that banner, and a port
+        // file written by Python was not visible before the deadline either.
+        let port = try reserveLoopbackPort()
+        let logURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("grok-mock-\(UUID().uuidString).log")
+        FileManager.default.createFile(atPath: logURL.path, contents: nil)
+        let logHandle = try FileHandle(forWritingTo: logURL)
+
         let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
+        process.executableURL = URL(fileURLWithPath: python)
         var environment = ProcessInfo.processInfo.environment
         environment["PYTHONUNBUFFERED"] = "1"
         process.environment = environment
-        process.arguments = [
-            "python3", "-u", script.path,
-            "--port", "0",
-            "--port-file", portFile.path
-        ]
-        let output = Pipe()
-        let errors = Pipe()
-        process.standardOutput = output
-        process.standardError = errors
+        process.arguments = ["-u", script.path, "--port", String(port)]
+        process.standardOutput = logHandle
+        process.standardError = logHandle
         do {
             try process.run()
         } catch {
-            throw MockServerLaunchError("Could not launch python3: \(error.localizedDescription)")
+            try? logHandle.close()
+            throw MockServerLaunchError("Could not launch \(python): \(error.localizedDescription)")
         }
-        guard let port = waitForPort(portFile: portFile, process: process) else {
+
+        guard waitUntilAccepting(port: port, process: process) else {
+            let status = process.isRunning ? "still running" : "exited \(process.terminationStatus)"
             if process.isRunning {
                 process.terminate()
+                process.waitUntilExit()
             }
-            process.waitUntilExit()
-            let stdout = collectedOutput(output)
-            let stderr = collectedOutput(errors)
+            try? logHandle.close()
+            let log = (try? String(contentsOf: logURL, encoding: .utf8))
+                .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) } ?? ""
+            try? FileManager.default.removeItem(at: logURL)
             throw MockServerLaunchError(
                 """
-                Mock server did not report a port.
-                stdout: \(stdout)
-                stderr: \(stderr)
+                Mock server did not accept connections on 127.0.0.1:\(port) (\(status)).
+                python: \(python)
+                log: \(log.isEmpty ? "<empty>" : log)
                 """
             )
         }
-        return MockServer(port: port, process: process)
+        return MockServer(port: port, process: process, logHandle: logHandle, logURL: logURL)
     }
 
-    /// The server writes the bound port to a file. Polling that file avoids
-    /// racing a pipe that never delivered the banner on the macOS runner.
-    private static func waitForPort(portFile: URL, process: Process) -> Int? {
-        let deadline = Date().addingTimeInterval(15)
-        while Date() < deadline {
-            if let text = try? String(contentsOf: portFile, encoding: .utf8) {
-                let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-                if let port = Int(trimmed), port > 0 {
-                    return port
-                }
+    /// First executable `python3` on PATH. An absolute path avoids `/usr/bin/env`
+    /// and a Command Line Tools stub that can sit forever without running the script.
+    private static func resolvedPython() -> String? {
+        let path = ProcessInfo.processInfo.environment["PATH"] ?? ""
+        for directory in path.split(separator: ":") {
+            let candidate = URL(fileURLWithPath: String(directory)).appendingPathComponent("python3").path
+            if FileManager.default.isExecutableFile(atPath: candidate) {
+                return candidate
             }
-            if !process.isRunning {
-                return nil
-            }
-            Thread.sleep(forTimeInterval: 0.05)
         }
         return nil
     }
 
-    private static func collectedOutput(_ pipe: Pipe) -> String {
-        let data = pipe.fileHandleForReading.availableData
-        let text = String(decoding: data, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
-        return text.isEmpty ? "<empty>" : text
+    private static func reserveLoopbackPort() throws -> Int {
+        let fd = socket(AF_INET, SOCK_STREAM, 0)
+        guard fd >= 0 else {
+            throw MockServerLaunchError("socket() failed while reserving a port")
+        }
+        defer { close(fd) }
+        var reuse: Int32 = 1
+        _ = withUnsafePointer(to: &reuse) { pointer in
+            setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, pointer, socklen_t(MemoryLayout.size(ofValue: reuse)))
+        }
+        var addr = sockaddr_in()
+        addr.sin_len = UInt8(MemoryLayout<sockaddr_in>.size)
+        addr.sin_family = sa_family_t(AF_INET)
+        addr.sin_port = 0
+        _ = "127.0.0.1".withCString { inet_pton(AF_INET, $0, &addr.sin_addr) }
+        let bound = withUnsafePointer(to: &addr) {
+            $0.withMemoryRebound(to: sockaddr.self, capacity: 1) { pointer in
+                bind(fd, pointer, socklen_t(MemoryLayout<sockaddr_in>.size))
+            }
+        }
+        guard bound == 0 else {
+            throw MockServerLaunchError("bind() failed while reserving a port")
+        }
+        var actual = sockaddr_in()
+        var length = socklen_t(MemoryLayout<sockaddr_in>.size)
+        let named = withUnsafeMutablePointer(to: &actual) {
+            $0.withMemoryRebound(to: sockaddr.self, capacity: 1) { pointer in
+                getsockname(fd, pointer, &length)
+            }
+        }
+        guard named == 0 else {
+            throw MockServerLaunchError("getsockname() failed while reserving a port")
+        }
+        let port = Int(UInt16(bigEndian: actual.sin_port))
+        guard port > 0 else {
+            throw MockServerLaunchError("reserved port was 0")
+        }
+        return port
+    }
+
+    private static func waitUntilAccepting(port: Int, process: Process) -> Bool {
+        let deadline = Date().addingTimeInterval(15)
+        while Date() < deadline {
+            if !process.isRunning {
+                return false
+            }
+            if canConnect(port: port) {
+                return true
+            }
+            Thread.sleep(forTimeInterval: 0.05)
+        }
+        return false
+    }
+
+    private static func canConnect(port: Int) -> Bool {
+        let fd = socket(AF_INET, SOCK_STREAM, 0)
+        guard fd >= 0 else { return false }
+        defer { close(fd) }
+        var addr = sockaddr_in()
+        addr.sin_len = UInt8(MemoryLayout<sockaddr_in>.size)
+        addr.sin_family = sa_family_t(AF_INET)
+        addr.sin_port = in_port_t(port).bigEndian
+        _ = "127.0.0.1".withCString { inet_pton(AF_INET, $0, &addr.sin_addr) }
+        let result = withUnsafePointer(to: &addr) {
+            $0.withMemoryRebound(to: sockaddr.self, capacity: 1) { pointer in
+                connect(fd, pointer, socklen_t(MemoryLayout<sockaddr_in>.size))
+            }
+        }
+        return result == 0
     }
 
     func setScenario(_ name: String) async throws {
@@ -442,9 +515,14 @@ private final class MockServer {
     }
 
     func stop() {
-        guard process.isRunning else { return }
-        process.terminate()
-        process.waitUntilExit()
+        if process.isRunning {
+            process.terminate()
+            process.waitUntilExit()
+        }
+        try? logHandle.close()
+        if FileManager.default.fileExists(atPath: logURL.path) {
+            try? FileManager.default.removeItem(at: logURL)
+        }
     }
 
     /// `#filePath` is `<repo>/macos/Tests/GrokUsageBarTests/<file>.swift`.

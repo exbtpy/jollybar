@@ -423,6 +423,8 @@ def main():
     if args.scenario not in known:
         parser.error(f"unknown scenario {args.scenario}")
     Handler.scenario = args.scenario
+    # The test binds a port, closes it, then asks us to listen there.
+    ThreadingHTTPServer.allow_reuse_address = True
     server = ThreadingHTTPServer(("127.0.0.1", args.port), Handler)
     Handler.server_port = server.server_address[1]
     if args.port_file:
