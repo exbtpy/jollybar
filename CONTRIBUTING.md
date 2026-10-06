@@ -43,4 +43,8 @@ See the README for the loopback environment variables. Do not log or print token
 
 ## Sparkle
 
-Updates are off unless this repository is given its own feed and keys. Do not point `SUFeedURL` at the upstream appcast.
+Release builds use this repository's appcast. The steps to generate the EdDSA key and to cut a tag are in `docs/RELEASING.md`. Do not point `SUFeedURL` at the upstream appcast, and do not reuse the upstream `SUPublicEDKey`.
+
+## Names
+
+`macos/identity.env` and `macos/Sources/GrokUsageBar/AppIdentity.swift` are the rename points. Keep them in sync.

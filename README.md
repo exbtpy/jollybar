@@ -37,7 +37,7 @@ That writes `~/.grok/auth.json` (or `$GROK_HOME/auth.json`). Open the menu bar i
 
 Tokens are not printed. When the access token is near expiry and the file has a refresh token, issuer, and client id, the app refreshes it with the issuer's OIDC token endpoint and writes the new token back to the same file. If refresh fails, the popover asks you to run `grok login` again. The auth file is never deleted by this app.
 
-History is stored in `~/.config/grok-usage-bar/history.json` (mode `0600`). The grok.com pool and the Grok Bot session are polled every 5, 15, 30, or 60 minutes. The optional Teams Admin API is polled at most once an hour. Refresh can ask Cursor sooner, except after HTTP 429, which waits for `Retry-After`. Notification thresholds for Grok Bot and the weekly pool are separate and live in Settings.
+History is stored in `~/.config/grok-usage-bar/history.json` (mode `0600`). That directory name is `CONFIG_DIR_NAME` in `macos/identity.env`. The grok.com pool and the Grok Bot session are polled every 5, 15, 30, or 60 minutes. The optional Teams Admin API is polled at most once an hour. Refresh can ask Cursor sooner, except after HTTP 429, which waits for `Retry-After`. Notification thresholds for Grok Bot and the weekly pool are separate and live in Settings.
 
 ## Optional Management API
 
@@ -72,7 +72,7 @@ Each call is `POST` with body `{}` and headers `Authorization: Bearer`, `Content
 
 ## Grok Bot spend (Teams fallback)
 
-Settings can store a Cursor API key (`crsr_…`) in the Keychain (account `cursor-api-key`, service `com.exbtpy.GrokUsageBar`). This is optional. It is not used while a Grok Bot session file is present, including when that session is expired. The request is HTTP Basic with the key as the username and an empty password. An optional member email selects your row in team spend. An optional monthly budget is the percent denominator when that row has no per-user limit. An optional `org_…` id switches the calls to the organization routes and uses the contract end as the reset. The organization pool limit is not treated as a personal Grok Bot limit.
+Settings can store a Cursor API key (`crsr_…`) in the Keychain (account `cursor-api-key`, service `com.exbtpy.GrokUsageBar`, the bundle id in `macos/identity.env`). This is optional. It is not used while a Grok Bot session file is present, including when that session is expired. The request is HTTP Basic with the key as the username and an empty password. An optional member email selects your row in team spend. An optional monthly budget is the percent denominator when that row has no per-user limit. An optional `org_…` id switches the calls to the organization routes and uses the contract end as the reset. The organization pool limit is not treated as a personal Grok Bot limit.
 
 Parsing lives in `macos/Sources/GrokUsageBar/CursorUsage.swift`.
 
@@ -198,4 +198,6 @@ GROK_USAGE_BAR_SAND_SECRETS=/tmp/sand-secrets.json \
 
 ## Updates
 
-Sparkle is compiled in and left unconfigured: the app bundle has no feed URL and no upstream public key, so it will not check Blimp-Labs' appcast. The release workflow refuses a repository or feed URL that points at that project, and it skips appcast publishing unless `SPARKLE_PRIVATE_KEY` is set on this repository.
+Sparkle is bundled. A release build sets `SUFeedURL` to this repository's GitHub Pages appcast (`https://exbtpy.github.io/grok-usage-bar/appcast.xml`). The app checks that feed only when `SUPublicEDKey` in `macos/Resources/Info.plist` is your key. Until that placeholder is replaced, release builds stay quiet. The release workflow signs the appcast with `SPARKLE_PRIVATE_KEY` and skips that step when the secret is absent. It refuses a repository, feed, or public key that belongs to Blimp-Labs/claude-usage-bar.
+
+Cutting a release, the Apple secrets, and the Sparkle key are in [`docs/RELEASING.md`](docs/RELEASING.md). The product name, bundle id, disk image name, and config directory are `macos/identity.env` plus `AppIdentity.swift`.

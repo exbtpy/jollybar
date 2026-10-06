@@ -16,7 +16,7 @@ class UsageHistoryService: ObservableObject {
 
     private static var defaultHistoryFileURL: URL {
         let dir = FileManager.default.homeDirectoryForCurrentUser
-            .appendingPathComponent(".config/grok-usage-bar", isDirectory: true)
+            .appendingPathComponent(".config/\(AppIdentity.configDirectoryName)", isDirectory: true)
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         return dir.appendingPathComponent("history.json")
     }

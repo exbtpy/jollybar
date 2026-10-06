@@ -1,6 +1,8 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
+<!-- Packaged builds stamp the bundle id, names, and executable from macos/identity.env.
+     Replace SUPublicEDKey using docs/RELEASING.md. The placeholder is stripped at package time. -->
 <dict>
     <key>CFBundleIdentifier</key>
     <string>com.exbtpy.GrokUsageBar</string>
@@ -28,5 +30,7 @@
     <false/>
     <key>SUScheduledCheckInterval</key>
     <integer>86400</integer>
+    <key>SUPublicEDKey</key>
+    <string>REPLACE_WITH_SPARKLE_PUBLIC_KEY</string>
 </dict>
 </plist>

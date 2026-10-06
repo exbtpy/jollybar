@@ -3,6 +3,16 @@ name: Release
 on:
   push:
     tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: Publish a GitHub Release
+        type: boolean
+        default: false
+      version:
+        description: Version to stamp when this run is not a tag
+        type: string
+        default: '0.0.0'
 
 concurrency:
   group: release-${{ github.ref }}
@@ -11,12 +21,14 @@ concurrency:
 jobs:
   release:
     runs-on: macos-26
+    timeout-minutes: 90
     permissions:
       contents: write
+      actions: write
+      pages: write
+      id-token: write
     outputs:
       publish_appcast: ${{ steps.appcast.outputs.publish }}
-    env:
-      REPOSITORY_NAME: ${{ github.event.repository.name }}
     steps:
       - uses: actions/checkout@v4
 
@@ -30,46 +42,146 @@ jobs:
               exit 1
               ;;
           esac
-          if [[ -n "${SU_FEED_URL:-}" ]]; then
-            feed="$(printf '%s' "$SU_FEED_URL" | tr '[:upper:]' '[:lower:]')"
-            case "$feed" in
-              *blimp-labs*|*claude-usage-bar*)
-                echo "::error::Refusing SU_FEED_URL that points at the upstream appcast."
-                exit 1
-                ;;
-            esac
-          fi
 
-      - name: Build release app bundle
+      - name: Load app identity
         run: |
           set -euo pipefail
-          version="${GITHUB_REF_NAME#v}"
-          export APP_VERSION="$version"
-          # Sparkle stays unconfigured: do not embed a feed URL.
-          unset SU_FEED_URL
-          bash macos/scripts/build.sh
+          # shellcheck disable=SC1091
+          source macos/identity.env
+          {
+            echo "APP_PRODUCT_NAME=${APP_PRODUCT_NAME}"
+            echo "APP_EXECUTABLE_NAME=${APP_EXECUTABLE_NAME}"
+            echo "APP_DISPLAY_NAME=${APP_DISPLAY_NAME}"
+            echo "APP_MENU_TITLE=${APP_MENU_TITLE}"
+            echo "APP_BUNDLE_ID=${APP_BUNDLE_ID}"
+            echo "DMG_NAME=${DMG_NAME}"
+            echo "CONFIG_DIR_NAME=${CONFIG_DIR_NAME}"
+          } >> "$GITHUB_ENV"
 
-      - name: Package and verify release artifacts
+      - name: Resolve version, feed, and publish
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
+          INPUT_PUBLISH: ${{ github.event_name == 'workflow_dispatch' && inputs.publish }}
         run: |
-          bash macos/scripts/build.sh --skip-build --zip --dmg
-          make verify-release
+          set -euo pipefail
+          if [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" ]]; then
+            raw="${INPUT_VERSION}"
+          else
+            raw="${GITHUB_REF_NAME#v}"
+          fi
+          if [[ "$raw" =~ ^([0-9]+\.[0-9]+\.[0-9]+) ]]; then
+            version="${BASH_REMATCH[1]}"
+          else
+            echo "::error::Version must start with x.y.z (got ${raw})."
+            exit 1
+          fi
+
+          owner="$(printf '%s' "$GITHUB_REPOSITORY_OWNER" | tr '[:upper:]' '[:lower:]')"
+          repo="${GITHUB_REPOSITORY#*/}"
+          feed="https://${owner}.github.io/${repo}/appcast.xml"
+          feed_lower="$(printf '%s' "$feed" | tr '[:upper:]' '[:lower:]')"
+          case "$feed_lower" in
+            *blimp-labs*|*claude-usage-bar*)
+              echo "::error::Refusing an appcast URL that points at the upstream project."
+              exit 1
+              ;;
+          esac
+
+          publish=false
+          if [[ "${GITHUB_EVENT_NAME}" == "push" ]]; then
+            case "${GITHUB_REF_NAME}" in
+              *dryrun*|*dry-run*) publish=false ;;
+              v*) publish=true ;;
+            esac
+            tag="${GITHUB_REF_NAME}"
+          else
+            tag="v${version}"
+            if [[ "${INPUT_PUBLISH}" == "true" ]]; then
+              publish=true
+            fi
+          fi
+
+          {
+            echo "APP_VERSION=${version}"
+            echo "SU_FEED_URL=${feed}"
+            echo "TAG_NAME=${tag}"
+            echo "SHOULD_PUBLISH=${publish}"
+          } >> "$GITHUB_ENV"
+          echo "Version ${version}, feed ${feed}, publish ${publish}, tag ${tag}"
+
+      - name: Build release app bundle
+        env:
+          UNIVERSAL: "1"
+          APPLE_CERTIFICATE_P12: ${{ secrets.APPLE_CERTIFICATE_P12 }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          SPARKLE_PUBLIC_KEY: ${{ secrets.SPARKLE_PUBLIC_KEY }}
+        run: bash macos/scripts/build.sh
+
+      - name: Notarize the app
+        env:
+          APPLE_CERTIFICATE_P12: ${{ secrets.APPLE_CERTIFICATE_P12 }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APP_STORE_CONNECT_API_KEY_ID: ${{ secrets.APP_STORE_CONNECT_API_KEY_ID }}
+          APP_STORE_CONNECT_API_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_API_ISSUER_ID }}
+          APP_STORE_CONNECT_API_KEY: ${{ secrets.APP_STORE_CONNECT_API_KEY }}
+        run: bash macos/scripts/notarize.sh app "macos/${APP_PRODUCT_NAME}.app"
+
+      - name: Package zip and DMG
+        run: bash macos/scripts/build.sh --skip-build --zip --dmg
+
+      - name: Notarize the disk image
+        env:
+          APPLE_CERTIFICATE_P12: ${{ secrets.APPLE_CERTIFICATE_P12 }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APP_STORE_CONNECT_API_KEY_ID: ${{ secrets.APP_STORE_CONNECT_API_KEY_ID }}
+          APP_STORE_CONNECT_API_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_API_ISSUER_ID }}
+          APP_STORE_CONNECT_API_KEY: ${{ secrets.APP_STORE_CONNECT_API_KEY }}
+        run: bash macos/scripts/notarize.sh dmg "macos/${DMG_NAME}.dmg"
+
+      - name: Verify release artifacts
+        env:
+          EXPECT_FEED_URL: "1"
+          EXPECT_UNIVERSAL: "1"
+        run: |
+          bash macos/scripts/verify-release.sh "macos/${APP_PRODUCT_NAME}.zip"
+          bash macos/scripts/verify-release.sh "macos/${DMG_NAME}.dmg"
+
+      - name: Upload disk image and zip
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-dmg
+          path: |
+            macos/${{ env.APP_PRODUCT_NAME }}.zip
+            macos/${{ env.DMG_NAME }}.dmg
+          if-no-files-found: warn
 
       - name: Generate release notes
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          set -euo pipefail
           mkdir -p dist/archives dist/site
-
-          gh api "repos/${GITHUB_REPOSITORY}/releases/generate-notes" \
+          if ! gh api "repos/${GITHUB_REPOSITORY}/releases/generate-notes" \
             --method POST \
-            -f tag_name="${GITHUB_REF_NAME}" \
-            --jq '.body' > dist/release-notes.md
+            -f tag_name="${TAG_NAME}" \
+            --jq '.body' > dist/release-notes.md; then
+            printf '# %s\n\nRelease build of %s.\n' "$TAG_NAME" "$APP_DISPLAY_NAME" > dist/release-notes.md
+          fi
+          bash macos/scripts/append-install-notes.sh "macos/${APP_PRODUCT_NAME}.app" dist/release-notes.md
 
           python3 - <<'PY'
           import json
           import os
           import urllib.request
 
+          product = os.environ["APP_PRODUCT_NAME"]
           with open("dist/release-notes.md", "r", encoding="utf-8") as fh:
               markdown = fh.read()
 
@@ -88,25 +200,46 @@ jobs:
               method="POST",
           )
 
-          with urllib.request.urlopen(request) as response:
-              html = response.read().decode("utf-8")
+          try:
+              with urllib.request.urlopen(request) as response:
+                  html = response.read().decode("utf-8")
+          except Exception as exc:
+              print(f"GitHub markdown rendering failed ({exc}); using the Markdown notes.")
+              html = "<pre>" + markdown.replace("&", "&amp;").replace("<", "&lt;") + "</pre>"
 
-          with open("dist/archives/GrokUsageBar.html", "w", encoding="utf-8") as fh:
+          os.makedirs("dist/archives", exist_ok=True)
+          with open(f"dist/archives/{product}.html", "w", encoding="utf-8") as fh:
               fh.write(html)
           PY
 
+      - name: Upload release notes
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-notes
+          path: |
+            dist/release-notes.md
+            dist/signing-mode.txt
+          if-no-files-found: warn
+
       - name: Create release
+        if: env.SHOULD_PUBLISH == 'true'
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ env.TAG_NAME }}
           files: |
-            macos/GrokUsageBar.zip
-            macos/GrokUsageBar.dmg
+            macos/${{ env.APP_PRODUCT_NAME }}.zip
+            macos/${{ env.DMG_NAME }}.dmg
           body_path: dist/release-notes.md
+          prerelease: ${{ contains(env.TAG_NAME, '-') }}
+          fail_on_unmatched_files: true
 
       - name: Generate Sparkle appcast
         id: appcast
+        if: env.SHOULD_PUBLISH == 'true'
         env:
           SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           repo="$(printf '%s' "$GITHUB_REPOSITORY" | tr '[:upper:]' '[:lower:]')"
@@ -116,29 +249,41 @@ jobs:
               exit 1
               ;;
           esac
+          feed_lower="$(printf '%s' "$SU_FEED_URL" | tr '[:upper:]' '[:lower:]')"
+          case "$feed_lower" in
+            *blimp-labs*|*claude-usage-bar*)
+              echo "::error::Refusing to publish an upstream appcast."
+              exit 1
+              ;;
+          esac
           if [[ -z "${SPARKLE_PRIVATE_KEY:-}" ]]; then
-            echo "Sparkle is unconfigured (no SPARKLE_PRIVATE_KEY). Skipping the appcast."
+            echo "SPARKLE_PRIVATE_KEY is unset. Skipping the appcast."
             echo "publish=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
-          if [[ -n "${SU_FEED_URL:-}" ]]; then
-            feed="$(printf '%s' "$SU_FEED_URL" | tr '[:upper:]' '[:lower:]')"
-            case "$feed" in
-              *blimp-labs*|*claude-usage-bar*)
-                echo "::error::Refusing to publish an upstream appcast."
-                exit 1
-                ;;
-            esac
+
+          mkdir -p dist/archives dist/site
+          cp "macos/${APP_PRODUCT_NAME}.zip" "dist/archives/${APP_PRODUCT_NAME}.zip"
+          tool="macos/.build/artifacts/sparkle/Sparkle/bin/generate_appcast"
+          if [[ ! -x "$tool" ]]; then
+            tool="$(find macos/.build -type f -name generate_appcast | head -n 1 || true)"
+          fi
+          if [[ -z "$tool" || ! -x "$tool" ]]; then
+            echo "::error::generate_appcast was not found in the Sparkle package."
+            exit 1
           fi
 
-          cp macos/GrokUsageBar.zip dist/archives/GrokUsageBar.zip
-          printf '%s' "$SPARKLE_PRIVATE_KEY" | \
-            macos/.build/artifacts/sparkle/Sparkle/bin/generate_appcast \
-              dist/archives \
-              --ed-key-file - \
-              --download-url-prefix "https://github.com/${GITHUB_REPOSITORY}/releases/download/${GITHUB_REF_NAME}/" \
-              --maximum-deltas 0 \
-              -o dist/site/appcast.xml
+          key_file="$(mktemp)"
+          chmod 600 "$key_file"
+          printf '%s' "$SPARKLE_PRIVATE_KEY" > "$key_file"
+          "$tool" dist/archives \
+            --ed-key-file "$key_file" \
+            --download-url-prefix "https://github.com/${GITHUB_REPOSITORY}/releases/download/${TAG_NAME}/" \
+            --maximum-deltas 0 \
+            -o dist/site/appcast.xml
+          rm -f "$key_file"
+
+          gh release upload "$TAG_NAME" dist/site/appcast.xml --clobber
           echo "publish=true" >> "$GITHUB_OUTPUT"
 
       - name: Upload appcast for GitHub Pages
@@ -146,6 +291,12 @@ jobs:
         uses: actions/upload-pages-artifact@v4
         with:
           path: dist/site
+
+      - name: Update Homebrew cask
+        if: env.SHOULD_PUBLISH == 'true'
+        env:
+          HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+        run: bash scripts/update-homebrew-tap.sh "macos/${DMG_NAME}.dmg" "$APP_VERSION"
 
   deploy_appcast:
     needs: release

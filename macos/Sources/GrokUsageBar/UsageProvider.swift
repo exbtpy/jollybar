@@ -274,7 +274,7 @@ struct GrokCLIWeeklyProvider: WeeklyPoolProviding {
         // Honest client name. The official CLI sends its own version here.
         // claudia's captured call succeeded with only Authorization and
         // X-XAI-Token-Auth, so this header is not treated as load-bearing.
-        request.setValue("grok-usage-bar", forHTTPHeaderField: "x-grok-client-version")
+        request.setValue(AppIdentity.configDirectoryName, forHTTPHeaderField: "x-grok-client-version")
         if HeaderSafety.isSafe(credential.userId) {
             request.setValue(credential.userId, forHTTPHeaderField: "x-userid")
         }

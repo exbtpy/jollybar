@@ -29,7 +29,7 @@ struct PopoverView: View {
 
     private var header: some View {
         VStack(alignment: .leading, spacing: 2) {
-            Text("Grok Usage")
+            Text(LocalizedStringKey(AppIdentity.menuTitle))
                 .font(.headline)
             if let tier = service.reading?.subscriptionTier, !tier.isEmpty {
                 Text(tier)
@@ -378,7 +378,7 @@ private struct SetupView: View {
     var body: some View {
         Text("Welcome")
             .font(.headline)
-        Text("Grok Usage Bar shows Grok Bot weekly usage and, when your grok.com account has one, the SuperGrok pool.")
+        Text(LocalizedStringKey("\(AppIdentity.displayName) shows Grok Bot weekly usage and, when your grok.com account has one, the SuperGrok pool."))
             .font(.subheadline)
             .foregroundStyle(.secondary)
             .fixedSize(horizontal: false, vertical: true)
