@@ -16,10 +16,10 @@ struct GrokUsageBarApp: App {
                 appUpdater: appUpdater
             )
         } label: {
-            Image(nsImage: service.isAuthenticated
-                ? renderIcon(weeklyFraction: service.weeklyFraction)
-                : renderUnauthenticatedIcon()
-            )
+            Image(nsImage: renderIcon(
+                botFraction: service.botFraction,
+                weeklyFraction: service.weeklyFraction
+            ))
                 .task {
                     if service.isAuthenticated && !UserDefaults.standard.bool(forKey: "setupComplete") {
                         UserDefaults.standard.set(true, forKey: "setupComplete")

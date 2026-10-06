@@ -1,25 +1,59 @@
 import AppKit
 
-private let glyphSize: CGFloat = 13
-private let barWidth: CGFloat = 28
-private let barHeight: CGFloat = 6
-private let gap: CGFloat = 3
-private let iconWidth: CGFloat = glyphSize + gap + barWidth
-private let iconHeight: CGFloat = 18
+private let labelWidth: CGFloat = 14
+private let barWidth: CGFloat = 24
+private let barHeight: CGFloat = 5
+private let rowGap: CGFloat = 3
+private let labelGap: CGFloat = 2
 private let cornerRadius: CGFloat = 2
+private let logoSize: CGFloat = 12
+private let logoGap: CGFloat = 2
+private let barsWidth: CGFloat = labelWidth + labelGap + barWidth + 2
+private let iconWidth: CGFloat = logoSize + logoGap + barsWidth
+private let iconHeight: CGFloat = 18
+private let fontSize: CGFloat = 8
 
-/// Neutral menu-bar glyph: a small bar mark plus one weekly usage bar.
-/// Drawn as a template image. Not an xAI or Grok logo.
-func renderIcon(weeklyFraction: Double?) -> NSImage {
+private let botLabel = "GB"
+private let weeklyLabel = "Wk"
+
+private struct CachedLabel {
+    let string: NSAttributedString
+    let size: NSSize
+}
+
+private let cachedLabels: [String: CachedLabel] = {
+    let font = NSFont.monospacedSystemFont(ofSize: fontSize, weight: .medium)
+    let attrs: [NSAttributedString.Key: Any] = [.font: font, .foregroundColor: NSColor.black]
+    var result = [String: CachedLabel]()
+    for label in [botLabel, weeklyLabel] {
+        let str = NSAttributedString(string: label, attributes: attrs)
+        result[label] = CachedLabel(string: str, size: str.size())
+    }
+    return result
+}()
+
+private func drawRow(label: String, barX: CGFloat, barY: CGFloat, labelX: CGFloat, drawBarFill: (CGFloat, CGFloat) -> Void) {
+    if let cached = cachedLabels[label] {
+        let labelY = barY + (barHeight - cached.size.height) / 2
+        cached.string.draw(at: NSPoint(x: labelX + labelWidth - cached.size.width, y: labelY))
+    }
+    drawBarFill(barX, barY)
+}
+
+/// Two menu-bar meters in the original stacked layout.
+/// Top is Grok Bot (`GB`). Bottom is the grok.com weekly pool (`Wk`).
+/// A nil fraction draws a dashed track so the other source can stand alone.
+/// The mark on the left is a drawn bar glyph, not a Claude or xAI logo.
+func renderIcon(botFraction: Double?, weeklyFraction: Double?) -> NSImage {
     let image = NSImage(size: NSSize(width: iconWidth, height: iconHeight), flipped: true) { _ in
-        drawGlyph(x: 0, y: (iconHeight - glyphSize) / 2, size: glyphSize)
-        let barX = glyphSize + gap
-        let barY = (iconHeight - barHeight) / 2
-        if let weeklyFraction {
-            drawBar(x: barX, y: barY, width: barWidth, height: barHeight, pct: weeklyFraction)
-        } else {
-            drawDashedBar(x: barX, y: barY, width: barWidth, height: barHeight)
-        }
+        let offset = logoSize + logoGap
+        let barX = offset + labelWidth + labelGap
+        let topY = (iconHeight - barHeight * 2 - rowGap) / 2
+        let bottomY = topY + barHeight + rowGap
+
+        drawGlyph(x: 0, y: (iconHeight - logoSize) / 2, size: logoSize)
+        drawMeter(label: botLabel, fraction: botFraction, barX: barX, barY: topY, labelX: offset)
+        drawMeter(label: weeklyLabel, fraction: weeklyFraction, barX: barX, barY: bottomY, labelX: offset)
         return true
     }
     image.isTemplate = true
@@ -27,12 +61,22 @@ func renderIcon(weeklyFraction: Double?) -> NSImage {
 }
 
 func renderUnauthenticatedIcon() -> NSImage {
-    renderIcon(weeklyFraction: nil)
+    renderIcon(botFraction: nil, weeklyFraction: nil)
+}
+
+private func drawMeter(label: String, fraction: Double?, barX: CGFloat, barY: CGFloat, labelX: CGFloat) {
+    drawRow(label: label, barX: barX, barY: barY, labelX: labelX) { x, y in
+        if let fraction {
+            drawBar(x: x, y: y, width: barWidth, height: barHeight, pct: fraction)
+        } else {
+            drawDashedBar(x: x, y: y, width: barWidth, height: barHeight)
+        }
+    }
 }
 
 private func drawGlyph(x: CGFloat, y: CGFloat, size: CGFloat) {
     let rect = NSRect(x: x, y: y, width: size, height: size)
-    let outline = NSBezierPath(roundedRect: rect.insetBy(dx: 0.5, dy: 0.5), xRadius: 3, yRadius: 3)
+    let outline = NSBezierPath(roundedRect: rect.insetBy(dx: 0.5, dy: 0.5), xRadius: 2.5, yRadius: 2.5)
     NSColor.black.setStroke()
     outline.lineWidth = 1
     outline.stroke()

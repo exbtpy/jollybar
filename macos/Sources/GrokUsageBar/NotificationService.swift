@@ -8,7 +8,8 @@ struct ThresholdAlert: Equatable {
 
 /// Fires when the weekly pool percent crosses `threshold` from below.
 /// `previous` and `current` are percentages in the 0...100 range, not fractions.
-func crossedWeeklyThreshold(
+func crossedUsageThreshold(
+    window: String,
     threshold: Int,
     previous: Double,
     current: Double
@@ -16,7 +17,15 @@ func crossedWeeklyThreshold(
     guard threshold > 0 else { return nil }
     let limit = Double(threshold)
     guard current >= limit, previous < limit else { return nil }
-    return ThresholdAlert(window: "Weekly", pct: Int(round(current)))
+    return ThresholdAlert(window: window, pct: Int(round(current)))
+}
+
+func crossedWeeklyThreshold(
+    threshold: Int,
+    previous: Double,
+    current: Double
+) -> ThresholdAlert? {
+    crossedUsageThreshold(window: "Weekly", threshold: threshold, previous: previous, current: current)
 }
 
 private class NotificationDelegate: NSObject, UNUserNotificationCenterDelegate {
@@ -33,8 +42,11 @@ private class NotificationDelegate: NSObject, UNUserNotificationCenterDelegate {
 class NotificationService: ObservableObject {
     /// 0 = off, 5–100 = alert when the weekly pool reaches this %.
     @Published private(set) var thresholdWeekly: Int
+    /// 0 = off, 5–100 = alert when Grok Bot reaches this %.
+    @Published private(set) var thresholdBot: Int
 
-    private var previousPercent: Double?
+    private var previousWeekly: Double?
+    private var previousBot: Double?
     private let delegate = NotificationDelegate()
 
     /// False when this process cannot use notifications at all, so callers can
@@ -43,6 +55,7 @@ class NotificationService: ObservableObject {
 
     init() {
         thresholdWeekly = Self.load("notificationThresholdWeekly")
+        thresholdBot = Self.load("notificationThresholdBot")
         if isAvailable {
             UNUserNotificationCenter.current().delegate = delegate
         }
@@ -51,8 +64,15 @@ class NotificationService: ObservableObject {
     func setThresholdWeekly(_ value: Int) {
         thresholdWeekly = clamp(value)
         UserDefaults.standard.set(thresholdWeekly, forKey: "notificationThresholdWeekly")
-        previousPercent = nil
+        previousWeekly = nil
         if thresholdWeekly > 0 { requestPermission() }
+    }
+
+    func setThresholdBot(_ value: Int) {
+        thresholdBot = clamp(value)
+        UserDefaults.standard.set(thresholdBot, forKey: "notificationThresholdBot")
+        previousBot = nil
+        if thresholdBot > 0 { requestPermission() }
     }
 
     func requestPermission() {
@@ -63,20 +83,35 @@ class NotificationService: ObservableObject {
         UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { _, _ in }
     }
 
-    /// `weeklyFraction` is 0...1, matching the value stored in history.
-    func checkAndNotify(weeklyFraction: Double) {
-        let current = weeklyFraction * 100
-        let previous = previousPercent ?? 0
-        defer { previousPercent = current }
-
-        guard let alert = crossedWeeklyThreshold(
-            threshold: thresholdWeekly,
-            previous: previous,
-            current: current
-        ) else {
-            return
+    /// Fractions are 0...1. A nil fraction leaves that source's previous
+    /// sample alone so a later reading can still cross its threshold.
+    func checkAndNotify(botFraction: Double?, weeklyFraction: Double?) {
+        if let weeklyFraction {
+            let current = weeklyFraction * 100
+            let previous = previousWeekly ?? 0
+            previousWeekly = current
+            if let alert = crossedUsageThreshold(
+                window: "Weekly",
+                threshold: thresholdWeekly,
+                previous: previous,
+                current: current
+            ) {
+                sendNotification(window: alert.window, pct: alert.pct)
+            }
         }
-        sendNotification(window: alert.window, pct: alert.pct)
+        if let botFraction {
+            let current = botFraction * 100
+            let previous = previousBot ?? 0
+            previousBot = current
+            if let alert = crossedUsageThreshold(
+                window: "Grok Bot",
+                threshold: thresholdBot,
+                previous: previous,
+                current: current
+            ) {
+                sendNotification(window: alert.window, pct: alert.pct)
+            }
+        }
     }
 
     private func sendNotification(window: String, pct: Int) {

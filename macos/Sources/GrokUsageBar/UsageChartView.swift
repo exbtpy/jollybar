@@ -31,12 +31,21 @@ struct UsageChartView: View {
 
     @ViewBuilder
     private func chartView(points: [UsageDataPoint]) -> some View {
-        let interpolated = hoverDate.flatMap {
-            UsageChartInterpolation.interpolateValues(at: $0, in: points)
+        let interpolated = hoverDate.flatMap { date in
+            hoveredValues(at: date, in: points)
         }
 
         Chart {
-            ForEach(points) { point in
+            ForEach(points.filter { $0.pctBot != nil }) { point in
+                LineMark(
+                    x: .value("Time", point.timestamp),
+                    y: .value("Usage", (point.pctBot ?? 0) * 100)
+                )
+                .foregroundStyle(by: .value("Window", "Grok Bot"))
+                .interpolationMethod(.catmullRom)
+            }
+
+            ForEach(points.filter(\.includesWeekly)) { point in
                 LineMark(
                     x: .value("Time", point.timestamp),
                     y: .value("Usage", point.pctWeekly * 100)
@@ -50,12 +59,22 @@ struct UsageChartView: View {
                     .foregroundStyle(.secondary.opacity(0.4))
                     .lineStyle(StrokeStyle(lineWidth: 1))
 
-                PointMark(
-                    x: .value("Time", iv.date),
-                    y: .value("Usage", iv.pctWeekly * 100)
-                )
-                .foregroundStyle(.teal)
-                .symbolSize(24)
+                if iv.showsWeekly {
+                    PointMark(
+                        x: .value("Time", iv.date),
+                        y: .value("Usage", iv.pctWeekly * 100)
+                    )
+                    .foregroundStyle(Color.orange)
+                    .symbolSize(24)
+                }
+                if let pctBot = iv.pctBot {
+                    PointMark(
+                        x: .value("Time", iv.date),
+                        y: .value("Usage", pctBot * 100)
+                    )
+                    .foregroundStyle(Color.blue)
+                    .symbolSize(24)
+                }
             }
         }
         .chartXScale(domain: Date.now.addingTimeInterval(-selectedRange.interval)...Date.now)
@@ -79,7 +98,8 @@ struct UsageChartView: View {
             }
         }
         .chartForegroundStyleScale([
-            "Weekly": Color.teal
+            "Grok Bot": Color.blue,
+            "Weekly": Color.orange
         ])
         .chartLegend(.visible)
         .chartPlotStyle { plot in
@@ -91,22 +111,46 @@ struct UsageChartView: View {
         .chartXSelection(value: $hoverDate)
         .overlay(alignment: .top) {
             if let iv = interpolated {
-                tooltipView(date: iv.date, pctWeekly: iv.pctWeekly)
+                tooltipView(values: iv)
             }
         }
         .frame(height: 120)
         .padding(.top, 4)
     }
 
+    private func hoveredValues(at date: Date, in points: [UsageDataPoint]) -> UsageChartInterpolatedValues? {
+        let weeklyPoints = points.filter(\.includesWeekly)
+        let botPoints = points.compactMap { point -> UsageDataPoint? in
+            guard let pctBot = point.pctBot else { return nil }
+            return UsageDataPoint(timestamp: point.timestamp, pctWeekly: pctBot)
+        }
+        let weekly = UsageChartInterpolation.interpolateValues(at: date, in: weeklyPoints)
+        let bot = UsageChartInterpolation.interpolateValues(at: date, in: botPoints)
+        guard weekly != nil || bot != nil else { return nil }
+        return UsageChartInterpolatedValues(
+            date: date,
+            pctWeekly: weekly?.pctWeekly ?? 0,
+            pctBot: bot?.pctWeekly,
+            showsWeekly: weekly != nil
+        )
+    }
+
     @ViewBuilder
-    private func tooltipView(date: Date, pctWeekly: Double) -> some View {
+    private func tooltipView(values: UsageChartInterpolatedValues) -> some View {
         VStack(spacing: 2) {
-            Text(date, format: tooltipDateFormat)
+            Text(values.date, format: tooltipDateFormat)
                 .font(.system(size: 9))
                 .foregroundStyle(.secondary)
-            Text("Weekly \(Int(round(pctWeekly * 100)))%")
-                .font(.system(size: 9, weight: .medium))
-                .foregroundStyle(.teal)
+            if let pctBot = values.pctBot {
+                Text("Grok Bot \(Int(round(pctBot * 100)))%")
+                    .font(.system(size: 9, weight: .medium))
+                    .foregroundStyle(.blue)
+            }
+            if values.showsWeekly {
+                Text("Weekly \(Int(round(values.pctWeekly * 100)))%")
+                    .font(.system(size: 9, weight: .medium))
+                    .foregroundStyle(.orange)
+            }
         }
         .padding(.horizontal, 6)
         .padding(.vertical, 3)
@@ -143,6 +187,15 @@ struct UsageChartView: View {
 struct UsageChartInterpolatedValues {
     let date: Date
     let pctWeekly: Double
+    var pctBot: Double?
+    var showsWeekly: Bool
+
+    init(date: Date, pctWeekly: Double, pctBot: Double? = nil, showsWeekly: Bool = true) {
+        self.date = date
+        self.pctWeekly = pctWeekly
+        self.pctBot = pctBot
+        self.showsWeekly = showsWeekly
+    }
 }
 
 enum UsageChartInterpolation {

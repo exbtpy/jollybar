@@ -5,11 +5,22 @@ struct UsageDataPoint: Codable, Identifiable {
     let timestamp: Date
     /// Weekly pool used fraction, 0...1.
     let pctWeekly: Double
+    /// Grok Bot used fraction, 0...1. Nil when that source had no percent.
+    let pctBot: Double?
+    /// False when this point has no weekly sample. `pctWeekly` is then unused.
+    let includesWeekly: Bool
 
-    init(timestamp: Date = Date(), pctWeekly: Double) {
+    init(
+        timestamp: Date = Date(),
+        pctWeekly: Double,
+        pctBot: Double? = nil,
+        includesWeekly: Bool = true
+    ) {
         self.id = UUID()
         self.timestamp = timestamp
         self.pctWeekly = pctWeekly
+        self.pctBot = pctBot
+        self.includesWeekly = includesWeekly
     }
 
     init(from decoder: Decoder) throws {
@@ -25,6 +36,8 @@ struct UsageDataPoint: Codable, Identifiable {
         } else {
             pctWeekly = 0
         }
+        pctBot = try container.decodeIfPresent(Double.self, forKey: .pctBot)
+        includesWeekly = try container.decodeIfPresent(Bool.self, forKey: .includesWeekly) ?? true
     }
 
     func encode(to encoder: Encoder) throws {
@@ -32,13 +45,17 @@ struct UsageDataPoint: Codable, Identifiable {
         try container.encode(id, forKey: .id)
         try container.encode(timestamp, forKey: .timestamp)
         try container.encode(pctWeekly, forKey: .pctWeekly)
+        try container.encodeIfPresent(pctBot, forKey: .pctBot)
+        try container.encode(includesWeekly, forKey: .includesWeekly)
     }
 
     private enum CodingKeys: String, CodingKey {
         case id
         case timestamp
         case pctWeekly
+        case pctBot
         case pct7d
+        case includesWeekly
     }
 }
 

@@ -34,12 +34,30 @@ Scenarios:
     error                   500 with a short error string
     echo_auth               500 whose error field repeats the bearer (redaction test)
     malformed               200 with a non-JSON body
+
+Cursor routes (Basic auth, never logged):
+
+    POST /teams/spend
+    POST /teams/filtered-usage-events
+
+The default Cursor payload is a member at person@example.com with a $50
+spend limit and two events: 250 cents of grok_bot and 900 cents of cursor.
+Grok Bot is therefore $2.50 of $50 (5%). These scenarios affect only the
+Cursor routes; billing stays on the normal payload:
+
+    cursor_unauthorized     401
+    cursor_forbidden        403
+    cursor_no_type          usage events omit application_type
+    cursor_rate_limited     429 with Retry-After 60
+
+Both Cursor responses send an ETag. A matching If-None-Match returns 304.
 """
 
 import argparse
 import json
 from datetime import datetime, timedelta, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
 from urllib.parse import urlparse
 
 
@@ -72,6 +90,79 @@ def credits(percent, products, prepaid=1250, cap=0, used=0, unified=True, period
     if percent is not None:
         config["creditUsagePercent"] = percent
     return {"config": config}
+
+
+SPECIAL_SCENARIOS = {
+    "unauthenticated",
+    "stale_then_ok",
+    "rate_limited",
+    "error",
+    "echo_auth",
+}
+
+CURSOR_SCENARIOS = {
+    "cursor_unauthorized",
+    "cursor_forbidden",
+    "cursor_no_type",
+    "cursor_rate_limited",
+}
+SPEND_ETAG = '"spend-1"'
+EVENTS_ETAG = '"events-1"'
+
+
+def epoch_ms(dt):
+    return int(dt.timestamp() * 1000)
+
+
+def cursor_spend():
+    start = datetime.now(timezone.utc) - timedelta(days=10)
+    return {
+        "teamMemberSpend": [
+            {
+                "userId": "user_example",
+                "email": "person@example.com",
+                "name": "Person Example",
+                "role": "member",
+                "spendCents": 250,
+                "overallSpendCents": 250,
+                "fastPremiumRequests": 1,
+                "hardLimitOverrideDollars": 0,
+                "monthlyLimitDollars": None,
+                "effectivePerUserLimitDollars": 50,
+            }
+        ],
+        "subscriptionCycleStart": epoch_ms(start),
+        "totalMembers": 1,
+        "totalPages": 1,
+    }
+
+
+def cursor_events(include_type=True):
+    now_ms = epoch_ms(datetime.now(timezone.utc))
+
+    def event(cents, application_type):
+        row = {
+            "timestamp": str(now_ms),
+            "userEmail": "person@example.com",
+            "model": "grok",
+            "kind": "USAGE_EVENT_KIND_INCLUDED_IN_BUSINESS",
+            "maxMode": False,
+            "requestsCosts": 1,
+            "isTokenBasedCall": True,
+            "isChargeable": True,
+            "isHeadless": False,
+            "chargedCents": cents,
+        }
+        if include_type:
+            row["application_type"] = application_type
+        return row
+
+    return {
+        "totalUsageEventsCount": 2,
+        "pagination": {"hasNextPage": False, "page": 1, "pageSize": 1000},
+        "usageEvents": [event(250, "grok_bot"), event(900, "cursor")],
+        "period": {"startDate": now_ms - 86400000, "endDate": now_ms},
+    }
 
 
 SCENARIOS = {
@@ -140,13 +231,7 @@ class Handler(BaseHTTPRequestHandler):
 
         if path.startswith("/scenario/"):
             name = path.split("/", 2)[2]
-            if name not in SCENARIOS and name not in {
-                "unauthenticated",
-                "stale_then_ok",
-                "rate_limited",
-                "error",
-                "echo_auth",
-            }:
+            if name not in SCENARIOS and name not in SPECIAL_SCENARIOS and name not in CURSOR_SCENARIOS:
                 self._json(404, {"error": "unknown scenario"})
                 return
             Handler.scenario = name
@@ -189,6 +274,13 @@ class Handler(BaseHTTPRequestHandler):
                     "token_type": "Bearer",
                 },
             )
+            return
+
+        if path in {"/teams/spend", "/teams/filtered-usage-events"}:
+            length = int(self.headers.get("Content-Length", "0") or "0")
+            if length:
+                self.rfile.read(length)
+            self._cursor(path)
             return
 
         if path.startswith("/v1/billing/teams/") and path.endswith("/usage"):
@@ -258,6 +350,49 @@ class Handler(BaseHTTPRequestHandler):
         payload = SCENARIOS.get(scenario, SCENARIOS["normal"])()
         self._json(200, payload)
 
+    def _cursor(self, path):
+        scenario = Handler.scenario if Handler.scenario in CURSOR_SCENARIOS else "ok"
+        if scenario == "cursor_unauthorized":
+            self._json(401, {"error": "invalid api key"})
+            return
+        if scenario == "cursor_forbidden":
+            self._json(403, {"error": "enterprise required"})
+            return
+        if scenario == "cursor_rate_limited":
+            body = json.dumps({"error": "rate limited"}).encode("utf-8")
+            self.send_response(429)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Retry-After", "60")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+            return
+
+        auth = self.headers.get("Authorization", "")
+        if not auth.startswith("Basic ") or len(auth) <= len("Basic "):
+            self._json(401, {"error": "unauthorized"})
+            return
+
+        etag = SPEND_ETAG if path == "/teams/spend" else EVENTS_ETAG
+        if self.headers.get("If-None-Match") == etag:
+            self.send_response(304)
+            self.send_header("ETag", etag)
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+            return
+
+        if path == "/teams/spend":
+            payload = cursor_spend()
+        else:
+            payload = cursor_events(include_type=scenario != "cursor_no_type")
+        body = json.dumps(payload).encode("utf-8")
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("ETag", etag)
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
     def _require_management_key(self):
         auth = self.headers.get("Authorization", "")
         if not auth.startswith("Bearer ") or len(auth) <= len("Bearer "):
@@ -278,19 +413,26 @@ def main():
     parser = argparse.ArgumentParser(description="Mock Grok usage endpoints")
     parser.add_argument("--port", type=int, default=8080)
     parser.add_argument("--scenario", default="normal")
+    parser.add_argument(
+        "--port-file",
+        default=None,
+        help="Write the bound port to this path before serving (used by tests)",
+    )
     args = parser.parse_args()
-    known = set(SCENARIOS) | {
-        "unauthenticated",
-        "stale_then_ok",
-        "rate_limited",
-        "error",
-        "echo_auth",
-    }
+    known = set(SCENARIOS) | SPECIAL_SCENARIOS | CURSOR_SCENARIOS
     if args.scenario not in known:
         parser.error(f"unknown scenario {args.scenario}")
     Handler.scenario = args.scenario
+    # The test binds a port, closes it, then asks us to listen there.
+    ThreadingHTTPServer.allow_reuse_address = True
     server = ThreadingHTTPServer(("127.0.0.1", args.port), Handler)
     Handler.server_port = server.server_address[1]
+    if args.port_file:
+        port_path = Path(args.port_file)
+        port_path.write_text(f"{Handler.server_port}\n", encoding="utf-8")
+    # A single line, flushed, so a pipe reader can see the port without
+    # waiting for a full block buffer.
+    print(f"PORT {Handler.server_port}", flush=True)
     print(
         f"Mock Grok usage server running on http://127.0.0.1:{Handler.server_port}",
         flush=True,

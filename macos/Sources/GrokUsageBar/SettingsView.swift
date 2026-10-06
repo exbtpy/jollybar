@@ -7,6 +7,10 @@ struct SettingsWindowContent: View {
     @ObservedObject var appUpdater: AppUpdater
     @State private var teamID = ""
     @State private var managementKey = ""
+    @State private var cursorKey = ""
+    @State private var cursorEmail = ""
+    @State private var cursorOrganizationID = ""
+    @State private var cursorBudget = ""
 
     var body: some View {
         Form {
@@ -32,12 +36,61 @@ struct SettingsWindowContent: View {
                 }
 
                 ThresholdSlider(
+                    label: "Grok Bot",
+                    value: notificationService.thresholdBot,
+                    onChange: { notificationService.setThresholdBot($0) }
+                )
+                ThresholdSlider(
                     label: "Weekly pool",
                     value: notificationService.thresholdWeekly,
                     onChange: { notificationService.setThresholdWeekly($0) }
                 )
             }
             .disabled(!notificationService.isAvailable)
+
+            Section("Grok Bot (Cursor)") {
+                Text("A Cursor API key reads Grok Bot spend for this account. It is stored in the Keychain. Usage events are aggregated hourly, so this source is polled at most once an hour. Teams or Enterprise and an admin or usage scope are required. HTTP 401 and 403 are shown on the Grok Bot row.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                SecureField(service.cursorConfigured ? "Cursor API key (saved)" : "Cursor API key", text: $cursorKey)
+                TextField("Member email (optional)", text: $cursorEmail)
+                TextField("Monthly budget in USD (optional)", text: $cursorBudget)
+                TextField("Organization id (optional)", text: $cursorOrganizationID)
+                Text("Leave the organization id blank to use the team spend API. The percent uses your per-user spend limit when the email matches a member. Otherwise it uses the monthly budget. The organization pool limit is not used as this bar.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                HStack {
+                    Button("Save") {
+                        service.saveCursorSettings(
+                            apiKey: cursorKey,
+                            email: cursorEmail,
+                            organizationID: cursorOrganizationID,
+                            budget: cursorBudget
+                        )
+                        cursorKey = ""
+                        if service.cursorConfigured && service.cursorError == nil {
+                            Task { await service.fetchUsage(refreshCursor: true) }
+                        }
+                    }
+                    Button("Remove") {
+                        service.clearCursorSettings()
+                        cursorKey = ""
+                        cursorEmail = ""
+                        cursorOrganizationID = ""
+                        cursorBudget = ""
+                    }
+                }
+                if service.cursorConfigured {
+                    Text("A Cursor API key is saved.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                if let error = service.cursorError {
+                    Text(error)
+                        .font(.caption)
+                        .foregroundStyle(.red)
+                }
+            }
 
             Section("Grok CLI session") {
                 Text("Usage comes from the grok CLI login in ~/.grok/auth.json. This app does not collect a password or start its own sign-in.")
@@ -115,6 +168,11 @@ struct SettingsWindowContent: View {
         .fixedSize(horizontal: false, vertical: true)
         .onAppear {
             teamID = service.managementTeamID
+            cursorEmail = service.cursorMemberEmail
+            cursorOrganizationID = service.cursorOrganizationID
+            if let budget = service.cursorBudgetDollars, budget > 0 {
+                cursorBudget = String(budget)
+            }
             focusSettingsWindow()
         }
     }

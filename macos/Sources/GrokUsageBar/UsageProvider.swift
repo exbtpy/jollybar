@@ -3,10 +3,12 @@ import Foundation
 enum EndpointOverride {
     static let proxyKey = "GROK_USAGE_BAR_PROXY_BASE"
     static let managementKey = "GROK_USAGE_BAR_MANAGEMENT_BASE"
+    static let cursorKey = "GROK_USAGE_BAR_CURSOR_BASE"
     static let authFileKey = "GROK_USAGE_BAR_AUTH_FILE"
 
     static let defaultProxyBase = URL(string: "https://cli-chat-proxy.grok.com/v1")!
     static let defaultManagementBase = URL(string: "https://management-api.x.ai")!
+    static let defaultCursorBase = URL(string: "https://api.cursor.com")!
 
     nonisolated private static let loopbackHosts: Set<String> = ["localhost", "127.0.0.1", "::1"]
 

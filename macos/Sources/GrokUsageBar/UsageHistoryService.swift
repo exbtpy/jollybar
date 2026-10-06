@@ -62,8 +62,8 @@ class UsageHistoryService: ObservableObject {
 
     // MARK: - Record
 
-    func recordDataPoint(pctWeekly: Double) {
-        let point = UsageDataPoint(pctWeekly: pctWeekly)
+    func recordDataPoint(pctWeekly: Double, pctBot: Double? = nil, includesWeekly: Bool = true) {
+        let point = UsageDataPoint(pctWeekly: pctWeekly, pctBot: pctBot, includesWeekly: includesWeekly)
         history.dataPoints.append(point)
         isDirty = true
         startFlushTimerIfNeeded()
@@ -143,11 +143,18 @@ class UsageHistoryService: ObservableObject {
 
         return buckets.compactMap { bucket -> UsageDataPoint? in
             guard !bucket.isEmpty else { return nil }
-            let avgPctWeekly = bucket.map(\.pctWeekly).reduce(0, +) / Double(bucket.count)
+            let weeklyValues = bucket.filter(\.includesWeekly).map(\.pctWeekly)
+            let avgPctWeekly = weeklyValues.isEmpty
+                ? 0
+                : weeklyValues.reduce(0, +) / Double(weeklyValues.count)
+            let botValues = bucket.compactMap(\.pctBot)
+            let avgBot = botValues.isEmpty ? nil : botValues.reduce(0, +) / Double(botValues.count)
             let avgTimestamp = bucket.map { $0.timestamp.timeIntervalSince1970 }.reduce(0, +) / Double(bucket.count)
             return UsageDataPoint(
                 timestamp: Date(timeIntervalSince1970: avgTimestamp),
-                pctWeekly: avgPctWeekly
+                pctWeekly: avgPctWeekly,
+                pctBot: avgBot,
+                includesWeekly: !weeklyValues.isEmpty
             )
         }
     }
