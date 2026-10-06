@@ -9,7 +9,7 @@ protocol SecretStoring {
 
 enum ManagementSecret {
     static let account = "management-api-key"
-    static let service = "com.exbtpy.GrokUsageBar"
+    static let service = AppIdentity.bundleIdentifier
 }
 
 enum CursorSecret {

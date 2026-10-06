@@ -121,7 +121,7 @@ class NotificationService: ObservableObject {
         }
 
         let content = UNMutableNotificationContent()
-        content.title = "Grok Usage"
+        content.title = AppIdentity.menuTitle
         content.body = "\(window) usage has reached \(pct)%"
         content.sound = .default
 

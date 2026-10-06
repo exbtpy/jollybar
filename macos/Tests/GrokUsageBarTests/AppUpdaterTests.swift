@@ -113,6 +113,14 @@ final class AppUpdaterTests: XCTestCase {
         XCTAssertTrue(described?.contains("Applications folder") ?? false)
     }
 
+    func testPlaceholderAndUpstreamKeysStayOff() {
+        XCTAssertFalse(AppUpdater.isUsablePublicKey(nil))
+        XCTAssertFalse(AppUpdater.isUsablePublicKey("   "))
+        XCTAssertFalse(AppUpdater.isUsablePublicKey(AppUpdater.publicKeyPlaceholder))
+        XCTAssertFalse(AppUpdater.isUsablePublicKey(AppUpdater.upstreamSparklePublicKey))
+        XCTAssertTrue(AppUpdater.isUsablePublicKey("pfIShU4dEXqPd5ObYNfDBiQWcXozk7estwzTnF9BamQ="))
+    }
+
     func testDescriptionAloneIsUsedWhenThereIsNoRecoverySuggestion() {
         let error = NSError(
             domain: SUSparkleErrorDomain,

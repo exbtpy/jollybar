@@ -6,7 +6,7 @@ func grokUsageBarResourceBundle(
     mainBundle: Bundle = .main,
     finderBundle: Bundle = Bundle(for: AppResourceBundleFinder.self)
 ) -> Bundle? {
-    let bundleName = "GrokUsageBar_GrokUsageBar.bundle"
+    let bundleName = "\(AppIdentity.productName)_\(AppIdentity.productName).bundle"
     let candidates: [URL?] = [
         mainBundle.resourceURL?.appendingPathComponent(bundleName),
         mainBundle.bundleURL.appendingPathComponent(bundleName),

@@ -19,7 +19,7 @@ import CommonCrypto
 /// `Connect-Protocol-Version: 1`.
 enum GrokBotSessionNotice {
     static let openGrokBot = "Open Grok Bot to refresh sign-in"
-    static let keychainDenied = "Keychain access denied. Reopen Grok Usage Bar to retry."
+    static let keychainDenied = "Keychain access denied. Reopen \(AppIdentity.displayName) to retry."
     static let notSignedIn = "Open Grok Bot and sign in. Teams and Enterprise can use an API key in Settings instead."
 }
 

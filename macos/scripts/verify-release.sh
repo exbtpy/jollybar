@@ -3,11 +3,17 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
-APP_NAME="GrokUsageBar"
+# shellcheck disable=SC1091
+source "$SCRIPT_DIR/load-identity.sh"
+
+APP_NAME="$APP_PRODUCT_NAME"
 ARTIFACT_PATH="${1:-$PROJECT_DIR/$APP_NAME.zip}"
-TMP_DIR="$(mktemp -d "${TMPDIR:-/tmp}/grok-usage-bar-release.XXXXXX")"
+TMP_DIR="$(mktemp -d "${TMPDIR:-/tmp}/${CONFIG_DIR_NAME}-release.XXXXXX")"
 MOUNT_DIR="$TMP_DIR/mount"
 DMG_ATTACHED=0
+# Keep in sync with AppUpdater.upstreamSparklePublicKey and publicKeyPlaceholder.
+UPSTREAM_SPARKLE_PUBLIC_KEY="kz41beMlVBUNq3/1hFCroklkNk5aGZGJlLcFxaukDPQ="
+SPARKLE_PUBLIC_KEY_PLACEHOLDER="REPLACE_WITH_SPARKLE_PUBLIC_KEY"
 
 cleanup() {
     if [[ "$DMG_ATTACHED" -eq 1 ]]; then
@@ -25,20 +31,37 @@ fi
 verify_app_bundle() {
     local app_bundle="$1"
     local app_plist="$app_bundle/Contents/Info.plist"
-    local resource_bundle="$app_bundle/Contents/Resources/${APP_NAME}_${APP_NAME}.bundle"
+    local resource_bundle="$app_bundle/Contents/Resources/${APP_PRODUCT_NAME}_${APP_PRODUCT_NAME}.bundle"
     local sparkle_framework="$app_bundle/Contents/Frameworks/Sparkle.framework"
 
     echo "==> Verifying packaged resources..."
     [[ -f "$app_plist" ]] || { echo "Error: missing Info.plist"; exit 1; }
     [[ -d "$resource_bundle" ]] || { echo "Error: missing SwiftPM resource bundle"; exit 1; }
-    [[ -f "$resource_bundle/Info.plist" ]] || { echo "Error: missing resource bundle Info.plist"; exit 1; }
-    [[ -f "$resource_bundle/en.lproj/Localizable.strings" ]] || { echo "Error: missing packaged localization resource"; exit 1; }
+    # `swift build` writes a flat bundle. `swift build --arch` (XCBuild) writes
+    # a normal macOS bundle with Contents/Info.plist and Contents/Resources.
+    if [[ -f "$resource_bundle/Info.plist" && -f "$resource_bundle/en.lproj/Localizable.strings" ]]; then
+        :
+    elif [[ -f "$resource_bundle/Contents/Info.plist" && -f "$resource_bundle/Contents/Resources/en.lproj/Localizable.strings" ]]; then
+        :
+    else
+        echo "Error: resource bundle is missing Info.plist or Localizable.strings"
+        find "$resource_bundle" -print
+        exit 1
+    fi
     [[ -d "$sparkle_framework" ]] || { echo "Error: missing Sparkle.framework"; exit 1; }
+
+    local bundle_id display_name executable
+    bundle_id="$(plutil -extract CFBundleIdentifier raw "$app_plist")"
+    display_name="$(plutil -extract CFBundleDisplayName raw "$app_plist")"
+    executable="$(plutil -extract CFBundleExecutable raw "$app_plist")"
+    [[ "$bundle_id" == "$APP_BUNDLE_ID" ]] || { echo "Error: CFBundleIdentifier is $bundle_id"; exit 1; }
+    [[ "$display_name" == "$APP_DISPLAY_NAME" ]] || { echo "Error: CFBundleDisplayName is $display_name"; exit 1; }
+    [[ "$executable" == "$APP_EXECUTABLE_NAME" ]] || { echo "Error: CFBundleExecutable is $executable"; exit 1; }
 
     echo "==> Verifying app signature..."
     codesign -v "$app_bundle"
 
-    verify_build_target "$app_bundle/Contents/MacOS/$APP_NAME"
+    verify_build_target "$app_bundle/Contents/MacOS/$APP_EXECUTABLE_NAME"
 
     # Notifications are gated on this key at runtime (see
     # supportsUserNotifications). Nothing else asserts it, and losing it fails
@@ -52,8 +75,7 @@ verify_app_bundle() {
     fi
 
     echo "==> Verifying updater metadata..."
-    # Sparkle is unconfigured unless a release build opted in. A feed that
-    # points at the upstream Claude Usage Bar appcast is always rejected.
+    # A feed that points at the upstream Claude Usage Bar appcast is always rejected.
     feed_url="$(plutil -extract SUFeedURL raw "$app_plist" 2>/dev/null || true)"
     feed_lower="$(printf '%s' "$feed_url" | tr '[:upper:]' '[:lower:]')"
     case "$feed_lower" in
@@ -66,8 +88,18 @@ verify_app_bundle() {
     if [[ "${EXPECT_FEED_URL:-0}" == "1" ]]; then
         [[ -n "$feed_url" ]] || { echo "Error: expected SUFeedURL"; exit 1; }
     elif [[ -n "$feed_url" ]]; then
-        echo "Error: this build embedded SUFeedURL=$feed_url but Sparkle should stay unconfigured."
+        echo "Error: this build embedded SUFeedURL=$feed_url."
+        echo "       Set EXPECT_FEED_URL=1 for a release build that opted into the appcast."
         exit 1
+    fi
+
+    public_key="$(plutil -extract SUPublicEDKey raw "$app_plist" 2>/dev/null || true)"
+    if [[ "$public_key" == "$UPSTREAM_SPARKLE_PUBLIC_KEY" || "$public_key" == "$SPARKLE_PUBLIC_KEY_PLACEHOLDER" ]]; then
+        echo "Error: SUPublicEDKey is the upstream key or the placeholder."
+        exit 1
+    fi
+    if [[ -z "$public_key" ]]; then
+        echo "    Sparkle public key is unset. The app will not check for updates until SUPublicEDKey is filled in."
     fi
 }
 
@@ -112,6 +144,20 @@ verify_build_target() {
     done <<< "$minoses"
 
     echo "    sdk $(head -n 1 <<< "$sdks") | minos $(head -n 1 <<< "$minoses")"
+
+    if [[ "${EXPECT_UNIVERSAL:-0}" == "1" ]]; then
+        local arches sparkle_bin sparkle_arches
+        command -v lipo >/dev/null 2>&1 || { echo "Error: lipo not found"; exit 1; }
+        arches="$(lipo -archs "$binary")"
+        echo "    arches: $arches"
+        grep -qw arm64 <<<"$arches" || { echo "Error: binary is missing arm64"; exit 1; }
+        grep -qw x86_64 <<<"$arches" || { echo "Error: binary is missing x86_64"; exit 1; }
+        sparkle_bin="$(dirname "$binary")/../Frameworks/Sparkle.framework/Versions/B/Sparkle"
+        sparkle_arches="$(lipo -archs "$sparkle_bin")"
+        echo "    Sparkle arches: $sparkle_arches"
+        grep -qw arm64 <<<"$sparkle_arches" || { echo "Error: Sparkle is missing arm64"; exit 1; }
+        grep -qw x86_64 <<<"$sparkle_arches" || { echo "Error: Sparkle is missing x86_64"; exit 1; }
+    fi
 }
 
 verify_applications_shortcut() {
@@ -147,6 +193,7 @@ case "$ARTIFACT_PATH" in
         APP_BUNDLE="$MOUNT_DIR/$APP_NAME.app"
         DMG_BACKGROUND="$MOUNT_DIR/.background/background.png"
         DMG_DS_STORE="$MOUNT_DIR/.DS_Store"
+        SOURCE_BACKGROUND="$PROJECT_DIR/Resources/dmg/background.png"
 
         echo "==> Mounting $(basename "$ARTIFACT_PATH")..."
         mkdir -p "$MOUNT_DIR"
@@ -155,8 +202,10 @@ case "$ARTIFACT_PATH" in
 
         [[ -d "$APP_BUNDLE" ]] || { echo "Error: mounted DMG did not contain $APP_NAME.app"; exit 1; }
         verify_applications_shortcut "$MOUNT_DIR/Applications"
-        [[ -f "$DMG_DS_STORE" ]] || { echo "Error: mounted DMG is missing Finder layout metadata"; exit 1; }
-        [[ -f "$DMG_BACKGROUND" ]] || { echo "Error: mounted DMG is missing Finder background artwork"; exit 1; }
+        if [[ -f "$SOURCE_BACKGROUND" ]]; then
+            [[ -f "$DMG_DS_STORE" ]] || { echo "Error: mounted DMG is missing Finder layout metadata"; exit 1; }
+            [[ -f "$DMG_BACKGROUND" ]] || { echo "Error: mounted DMG is missing Finder background artwork"; exit 1; }
+        fi
 
         verify_app_bundle "$APP_BUNDLE"
         ;;

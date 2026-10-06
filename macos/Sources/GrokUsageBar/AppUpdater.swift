@@ -49,8 +49,7 @@ final class AppUpdater: ObservableObject {
     init(bundle: Bundle = .main) {
         let feedURL = bundle.object(forInfoDictionaryKey: "SUFeedURL") as? String
         let publicKey = bundle.object(forInfoDictionaryKey: "SUPublicEDKey") as? String
-        self.isConfigured = Self.isUsableUpdateFeed(feedURL)
-            && !(publicKey?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true)
+        self.isConfigured = Self.isUsableUpdateFeed(feedURL) && Self.isUsablePublicKey(publicKey)
 
         let delegate = UpdaterDelegate()
         self.delegate = delegate
@@ -125,8 +124,23 @@ final class AppUpdater: ObservableObject {
         Int(SUError.installationAuthorizeLaterError.rawValue)   // 4008
     ]
 
+    /// Upstream Claude Usage Bar key. Keep in sync with the copy in `macos/scripts/build.sh`.
+    nonisolated static let upstreamSparklePublicKey = "kz41beMlVBUNq3/1hFCroklkNk5aGZGJlLcFxaukDPQ="
+    /// Slot in Info.plist until a real key is pasted in. Packaging strips it.
+    nonisolated static let publicKeyPlaceholder = "REPLACE_WITH_SPARKLE_PUBLIC_KEY"
+
     /// Sparkle stays off unless this build has an https feed that is not the
     /// upstream Claude Usage Bar appcast, plus a public key for that feed.
+    nonisolated static func isUsablePublicKey(_ key: String?) -> Bool {
+        guard let key else { return false }
+        let trimmed = key.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return false }
+        if trimmed == publicKeyPlaceholder || trimmed == upstreamSparklePublicKey {
+            return false
+        }
+        return true
+    }
+
     nonisolated static func isUsableUpdateFeed(_ feed: String?) -> Bool {
         guard let feed else { return false }
         let trimmed = feed.trimmingCharacters(in: .whitespacesAndNewlines)

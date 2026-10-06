@@ -5,3 +5,7 @@
 *.app/
 .DS_Store
 xcuserdata/
+dist/
+*.p12
+*.p8
+sparkle-private-key
