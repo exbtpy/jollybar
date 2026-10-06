@@ -44,7 +44,8 @@ struct GrokUsageBarApp: App {
                 appUpdater: appUpdater
             )
         }
-        .windowResizability(.contentSize)
+        .windowResizability(.automatic)
+        .defaultSize(width: SettingsLayout.windowWidth, height: SettingsLayout.openingContentHeight)
         .windowStyle(.titleBar)
     }
 }

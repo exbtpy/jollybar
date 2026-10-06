@@ -1,6 +1,79 @@
 import SwiftUI
 import ServiceManagement
 
+/// Sizes the Settings window so it fits the visible screen and can still be resized.
+enum SettingsLayout {
+    static let windowWidth: CGFloat = 440
+    static let minimumWindowWidth: CGFloat = 420
+    static let maximumWindowWidth: CGFloat = 560
+    /// Comfortable height on a tall display. Shorter screens use a smaller ideal.
+    static let preferredContentHeight: CGFloat = 640
+    static let minimumContentHeight: CGFloat = 320
+    /// Title bar, plus a gap so the window does not sit flush against the Dock.
+    /// `NSScreen.visibleFrame` already excludes the menu bar and Dock.
+    static let titleBarAllowance: CGFloat = 48
+    /// About the visible frame of a scaled 13-inch MacBook Air.
+    static let fallbackVisibleHeight: CGFloat = 800
+
+    struct ContentHeights: Equatable {
+        let minimum: CGFloat
+        let ideal: CGFloat
+        let maximum: CGFloat
+    }
+
+    struct ContentSize: Equatable {
+        let width: CGFloat
+        let height: CGFloat
+    }
+
+    /// Content-area heights that stay inside `visibleHeight`, including the title bar.
+    static func contentHeights(visibleHeight: CGFloat) -> ContentHeights {
+        let screen = visibleHeight.isFinite ? visibleHeight : fallbackVisibleHeight
+        let maximum = max(screen - titleBarAllowance, 1)
+        let ideal = min(preferredContentHeight, maximum)
+        let minimum = min(minimumContentHeight, ideal)
+        return ContentHeights(minimum: minimum, ideal: ideal, maximum: maximum)
+    }
+
+    static var currentVisibleHeight: CGFloat {
+        let height = NSScreen.main?.visibleFrame.height ?? 0
+        return height > 1 ? height : fallbackVisibleHeight
+    }
+
+    static var openingContentHeight: CGFloat {
+        contentHeights(visibleHeight: currentVisibleHeight).ideal
+    }
+
+    /// Keeps a size the user chose inside the visible frame. Sizes outside that
+    /// frame snap back to the opening size.
+    static func clampedContentSize(
+        currentWidth: CGFloat,
+        currentHeight: CGFloat,
+        visibleHeight: CGFloat
+    ) -> ContentSize {
+        let heights = contentHeights(visibleHeight: visibleHeight)
+        let width: CGFloat
+        if currentWidth < minimumWindowWidth || currentWidth > maximumWindowWidth {
+            width = windowWidth
+        } else {
+            width = currentWidth
+        }
+        let height: CGFloat
+        if currentHeight < heights.minimum || currentHeight > heights.maximum {
+            height = heights.ideal
+        } else {
+            height = currentHeight
+        }
+        return ContentSize(width: width, height: height)
+    }
+
+    /// Open the Teams and Enterprise fields when a key is already saved or the
+    /// last attempt failed, so Save and Remove stay reachable.
+    static func expandsAdvancedCursorSettings(configured: Bool, hasError: Bool) -> Bool {
+        configured || hasError
+    }
+}
+
 struct SettingsWindowContent: View {
     @ObservedObject var service: UsageService
     @ObservedObject var notificationService: NotificationService
@@ -11,9 +84,46 @@ struct SettingsWindowContent: View {
     @State private var cursorEmail = ""
     @State private var cursorOrganizationID = ""
     @State private var cursorBudget = ""
+    @State private var advancedExpanded = false
+    @State private var didApplyAdvancedDefault = false
     @AppStorage(MenuTheme.defaultsKey) private var menuThemeRaw = MenuTheme.classic.rawValue
 
     var body: some View {
+        let heights = SettingsLayout.contentHeights(visibleHeight: SettingsLayout.currentVisibleHeight)
+
+        ScrollView(.vertical) {
+            settingsForm
+        }
+        .scrollBounceBehavior(.basedOnSize)
+        .scrollContentBackground(.hidden)
+        .frame(
+            minWidth: SettingsLayout.minimumWindowWidth,
+            idealWidth: SettingsLayout.windowWidth,
+            maxWidth: SettingsLayout.maximumWindowWidth,
+            minHeight: heights.minimum,
+            idealHeight: heights.ideal,
+            maxHeight: heights.maximum
+        )
+        .background(SettingsWindowClamp())
+        .onAppear {
+            teamID = service.managementTeamID
+            cursorEmail = service.cursorMemberEmail
+            cursorOrganizationID = service.cursorOrganizationID
+            if let budget = service.cursorBudgetDollars, budget > 0 {
+                cursorBudget = String(budget)
+            }
+            if !didApplyAdvancedDefault {
+                advancedExpanded = SettingsLayout.expandsAdvancedCursorSettings(
+                    configured: service.cursorConfigured,
+                    hasError: service.cursorError != nil
+                )
+                didApplyAdvancedDefault = true
+            }
+            focusSettingsWindow()
+        }
+    }
+
+    private var settingsForm: some View {
         Form {
             Section("General") {
                 LaunchAtLoginToggle()
@@ -64,37 +174,48 @@ struct SettingsWindowContent: View {
                 Text("Grok Bot weekly usage is read from the Grok Bot app on this Mac. The access token stays in Grok Bot’s files. This app does not read the refresh token and does not sign you in again. If the session expires, open Grok Bot.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
-                Text("Optional fallback for Teams and Enterprise: a Cursor API key reads Grok Bot spend when Grok Bot is not signed in on this Mac. It is stored in the Keychain. That source is polled at most once an hour and is labeled spend, not the weekly meter.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                SecureField(service.cursorConfigured ? "Cursor API key (saved)" : "Cursor API key", text: $cursorKey)
-                TextField("Member email (optional)", text: $cursorEmail)
-                TextField("Monthly budget in USD (optional)", text: $cursorBudget)
-                TextField("Organization id (optional)", text: $cursorOrganizationID)
-                Text("Leave the organization id blank to use the team spend API. The percent uses your per-user spend limit when the email matches a member. Otherwise it uses the monthly budget. The organization pool limit is not used as this bar.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                HStack {
-                    Button("Save") {
-                        service.saveCursorSettings(
-                            apiKey: cursorKey,
-                            email: cursorEmail,
-                            organizationID: cursorOrganizationID,
-                            budget: cursorBudget
-                        )
-                        cursorKey = ""
-                        if service.cursorConfigured && service.cursorError == nil {
-                            Task { await service.fetchUsage(refreshCursor: true) }
+
+                DisclosureGroup(isExpanded: $advancedExpanded) {
+                    Text("Optional fallback for Teams and Enterprise: a Cursor API key reads Grok Bot spend when Grok Bot is not signed in on this Mac. It is stored in the Keychain. That source is polled at most once an hour and is labeled spend, not the weekly meter.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    SecureField(service.cursorConfigured ? "Cursor API key (saved)" : "Cursor API key", text: $cursorKey)
+                    TextField("Member email (optional)", text: $cursorEmail)
+                    TextField("Monthly budget in USD (optional)", text: $cursorBudget)
+                    TextField("Organization id (optional)", text: $cursorOrganizationID)
+                    Text("Leave the organization id blank to use the team spend API. The percent uses your per-user spend limit when the email matches a member. Otherwise it uses the monthly budget. The organization pool limit is not used as this bar.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    HStack {
+                        Button("Save") {
+                            service.saveCursorSettings(
+                                apiKey: cursorKey,
+                                email: cursorEmail,
+                                organizationID: cursorOrganizationID,
+                                budget: cursorBudget
+                            )
+                            cursorKey = ""
+                            if service.cursorConfigured && service.cursorError == nil {
+                                Task { await service.fetchUsage(refreshCursor: true) }
+                            }
+                        }
+                        Button("Remove") {
+                            service.clearCursorSettings()
+                            cursorKey = ""
+                            cursorEmail = ""
+                            cursorOrganizationID = ""
+                            cursorBudget = ""
                         }
                     }
-                    Button("Remove") {
-                        service.clearCursorSettings()
-                        cursorKey = ""
-                        cursorEmail = ""
-                        cursorOrganizationID = ""
-                        cursorBudget = ""
+                } label: {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Advanced")
+                        Text("Teams and Enterprise API fallback")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
                     }
                 }
+
                 if service.cursorConfigured {
                     Text("A Cursor API key is saved.")
                         .font(.caption)
@@ -179,17 +300,9 @@ struct SettingsWindowContent: View {
             }
         }
         .formStyle(.grouped)
-        .frame(width: 440)
+        .scrollDisabled(true)
+        .frame(maxWidth: .infinity, alignment: .leading)
         .fixedSize(horizontal: false, vertical: true)
-        .onAppear {
-            teamID = service.managementTeamID
-            cursorEmail = service.cursorMemberEmail
-            cursorOrganizationID = service.cursorOrganizationID
-            if let budget = service.cursorBudgetDollars, budget > 0 {
-                cursorBudget = String(budget)
-            }
-            focusSettingsWindow()
-        }
     }
 }
 
@@ -205,6 +318,75 @@ extension SettingsWindowContent {
         let trimmed = shortVersion?.trimmingCharacters(in: .whitespacesAndNewlines)
         guard let trimmed, !trimmed.isEmpty else { return "unknown" }
         return trimmed
+    }
+}
+
+private struct SettingsWindowClamp: NSViewRepresentable {
+    func makeCoordinator() -> Coordinator {
+        Coordinator()
+    }
+
+    func makeNSView(context: Context) -> NSView {
+        NSView(frame: .zero)
+    }
+
+    func updateNSView(_ view: NSView, context: Context) {
+        DispatchQueue.main.async {
+            guard let window = view.window else { return }
+            context.coordinator.observeScreenChanges(of: window)
+            Self.apply(to: window)
+        }
+    }
+
+    static func dismantleNSView(_ nsView: NSView, coordinator: Coordinator) {
+        coordinator.stop()
+    }
+
+    final class Coordinator {
+        private var screenObserver: NSObjectProtocol?
+
+        func observeScreenChanges(of window: NSWindow) {
+            guard screenObserver == nil else { return }
+            screenObserver = NotificationCenter.default.addObserver(
+                forName: NSWindow.didChangeScreenNotification,
+                object: window,
+                queue: .main
+            ) { [weak window] _ in
+                guard let window else { return }
+                SettingsWindowClamp.apply(to: window)
+            }
+        }
+
+        func stop() {
+            if let screenObserver {
+                NotificationCenter.default.removeObserver(screenObserver)
+                self.screenObserver = nil
+            }
+        }
+    }
+
+    static func apply(to window: NSWindow) {
+        let visible = window.screen?.visibleFrame.height ?? SettingsLayout.currentVisibleHeight
+        let heights = SettingsLayout.contentHeights(visibleHeight: visible)
+        let contentMin = NSSize(width: SettingsLayout.minimumWindowWidth, height: heights.minimum)
+        let contentMax = NSSize(width: SettingsLayout.maximumWindowWidth, height: heights.maximum)
+        window.contentMinSize = contentMin
+        window.contentMaxSize = contentMax
+
+        let contentRect = window.contentRect(forFrameRect: window.frame)
+        let chromeHeight = max(0, window.frame.height - contentRect.height)
+        window.minSize = NSSize(width: contentMin.width, height: contentMin.height + chromeHeight)
+        window.maxSize = NSSize(width: contentMax.width, height: contentMax.height + chromeHeight)
+        window.styleMask.insert(.resizable)
+
+        let fitted = SettingsLayout.clampedContentSize(
+            currentWidth: contentRect.width,
+            currentHeight: contentRect.height,
+            visibleHeight: visible
+        )
+        if abs(fitted.width - contentRect.width) > 0.5 || abs(fitted.height - contentRect.height) > 0.5 {
+            window.setContentSize(NSSize(width: fitted.width, height: fitted.height))
+        }
     }
 }
 
