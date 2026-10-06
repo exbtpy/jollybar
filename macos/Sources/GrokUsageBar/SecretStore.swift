@@ -12,6 +12,12 @@ enum ManagementSecret {
     static let service = "com.exbtpy.GrokUsageBar"
 }
 
+enum CursorSecret {
+    /// Keychain account for the Cursor Admin or Organization API key.
+    /// Same keychain service as the management key; a different account.
+    static let account = "cursor-api-key"
+}
+
 enum SecretStoreError: Error {
     case saveFailed
 }

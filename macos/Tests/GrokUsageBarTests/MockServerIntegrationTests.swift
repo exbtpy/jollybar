@@ -148,6 +148,138 @@ final class MockServerIntegrationTests: XCTestCase {
         XCTAssertEqual(harness.history.history.dataPoints.count, 2)
     }
 
+    func testCursorGrokBotIsFivePercentAndWeeklyStays() async throws {
+        let harness = try makeHarness()
+        harness.service.saveCursorSettings(
+            apiKey: "crsr_test_key_123456",
+            email: "person@example.com",
+            organizationID: "",
+            budget: ""
+        )
+        await harness.service.fetchUsage(refreshCursor: true)
+
+        XCTAssertEqual(try XCTUnwrap(harness.service.reading?.usedPercent), 42, accuracy: 0.001)
+        XCTAssertEqual(try XCTUnwrap(harness.service.cursorReading?.usedPercent), 5, accuracy: 0.01)
+        XCTAssertEqual(harness.service.cursorReading?.limitSource, "spend limit" as String?)
+        XCTAssertEqual(harness.service.botFraction ?? -1, 0.05, accuracy: 0.001)
+        XCTAssertEqual(harness.service.weeklyFraction ?? -1, 0.42, accuracy: 0.001)
+        XCTAssertNil(harness.service.cursorError)
+        let point = try XCTUnwrap(harness.history.history.dataPoints.first)
+        XCTAssertEqual(try XCTUnwrap(point.pctBot), 0.05, accuracy: 0.001)
+        XCTAssertTrue(point.includesWeekly)
+        let detail = harness.service.cursorReading?.amountDetail ?? ""
+        XCTAssertFalse(detail.contains("crsr_"))
+        XCTAssertTrue(harness.service.cursorReading?.resetIsAssumedMonthly == true)
+    }
+
+    func testCursorUnauthorizedDoesNotClearTheWeeklyPool() async throws {
+        let harness = try makeHarness()
+        await harness.service.fetchUsage()
+        XCTAssertEqual(try XCTUnwrap(harness.service.reading?.usedPercent), 42, accuracy: 0.001)
+
+        try await setScenario("cursor_unauthorized")
+        harness.service.saveCursorSettings(
+            apiKey: "crsr_test_key_123456",
+            email: "person@example.com",
+            organizationID: "",
+            budget: "40"
+        )
+        await harness.service.fetchUsage(refreshCursor: true)
+
+        XCTAssertEqual(try XCTUnwrap(harness.service.reading?.usedPercent), 42, accuracy: 0.001)
+        XCTAssertNil(harness.service.cursorReading)
+        XCTAssertTrue(harness.service.cursorError?.contains("401") == true)
+        XCTAssertFalse(harness.service.cursorError?.contains("crsr_") == true)
+    }
+
+    func testCursorForbiddenNamesThePlanRequirement() async throws {
+        let harness = try makeHarness()
+        try await setScenario("cursor_forbidden")
+        harness.service.saveCursorSettings(
+            apiKey: "crsr_test_key_123456",
+            email: "person@example.com",
+            organizationID: "",
+            budget: ""
+        )
+        await harness.service.fetchUsage(refreshCursor: true)
+
+        XCTAssertEqual(try XCTUnwrap(harness.service.reading?.usedPercent), 42, accuracy: 0.001)
+        XCTAssertNil(harness.service.cursorReading)
+        XCTAssertTrue(harness.service.cursorError?.contains("403") == true)
+        XCTAssertTrue(harness.service.cursorError?.contains("Teams") == true)
+    }
+
+    func testCursorEventsWithoutApplicationTypeAreNotGrokBot() async throws {
+        let harness = try makeHarness()
+        try await setScenario("cursor_no_type")
+        harness.service.saveCursorSettings(
+            apiKey: "crsr_test_key_123456",
+            email: "person@example.com",
+            organizationID: "",
+            budget: "50"
+        )
+        await harness.service.fetchUsage(refreshCursor: true)
+
+        XCTAssertNil(harness.service.cursorReading?.usedPercent)
+        XCTAssertNil(harness.service.cursorReading?.usedCents)
+        XCTAssertTrue(harness.service.cursorError?.contains("application_type") == true)
+        XCTAssertEqual(try XCTUnwrap(harness.service.reading?.usedPercent), 42, accuracy: 0.001)
+        let point = try XCTUnwrap(harness.history.history.dataPoints.first)
+        XCTAssertNil(point.pctBot)
+        XCTAssertTrue(point.includesWeekly)
+    }
+
+    func testCursorRateLimitKeepsTheLastBotReading() async throws {
+        let harness = try makeHarness()
+        harness.service.saveCursorSettings(
+            apiKey: "crsr_test_key_123456",
+            email: "person@example.com",
+            organizationID: "",
+            budget: ""
+        )
+        await harness.service.fetchUsage(refreshCursor: true)
+        XCTAssertEqual(try XCTUnwrap(harness.service.cursorReading?.usedPercent), 5, accuracy: 0.01)
+
+        try await setScenario("cursor_rate_limited")
+        await harness.service.fetchUsage(refreshCursor: true)
+
+        XCTAssertEqual(try XCTUnwrap(harness.service.cursorReading?.usedPercent), 5, accuracy: 0.01)
+        XCTAssertTrue(harness.service.cursorError?.localizedCaseInsensitiveContains("rate") == true)
+        XCTAssertEqual(try XCTUnwrap(harness.service.reading?.usedPercent), 42, accuracy: 0.001)
+    }
+
+    func testCursorNotModifiedKeepsTheReading() async throws {
+        let harness = try makeHarness()
+        harness.service.saveCursorSettings(
+            apiKey: "crsr_test_key_123456",
+            email: "person@example.com",
+            organizationID: "",
+            budget: ""
+        )
+        await harness.service.fetchUsage(refreshCursor: true)
+        XCTAssertEqual(try XCTUnwrap(harness.service.cursorReading?.usedPercent), 5, accuracy: 0.01)
+
+        await harness.service.fetchUsage(refreshCursor: true)
+        XCTAssertEqual(try XCTUnwrap(harness.service.cursorReading?.usedPercent), 5, accuracy: 0.01)
+        XCTAssertNil(harness.service.cursorError)
+        XCTAssertEqual(try XCTUnwrap(harness.service.reading?.usedPercent), 42, accuracy: 0.001)
+    }
+
+    func testMonthlyBudgetIsTheDenominatorWhenEmailIsOmitted() async throws {
+        let harness = try makeHarness()
+        harness.service.saveCursorSettings(
+            apiKey: "crsr_test_key_123456",
+            email: "",
+            organizationID: "",
+            budget: "20"
+        )
+        await harness.service.fetchUsage(refreshCursor: true)
+
+        XCTAssertEqual(try XCTUnwrap(harness.service.cursorReading?.usedPercent), 12.5, accuracy: 0.01)
+        XCTAssertEqual(harness.service.cursorReading?.limitSource, "monthly budget" as String?)
+        XCTAssertEqual(try XCTUnwrap(harness.service.reading?.usedPercent), 42, accuracy: 0.001)
+    }
+
     private func setScenario(_ name: String) async throws {
         try await XCTUnwrap(server).setScenario(name)
     }
@@ -203,6 +335,7 @@ final class MockServerIntegrationTests: XCTestCase {
             session: URLSession(configuration: .ephemeral),
             proxyBaseURL: URL(string: "http://127.0.0.1:\(server.port)/v1")!,
             managementBaseURL: URL(string: "http://127.0.0.1:\(server.port)")!,
+            cursorBaseURL: URL(string: "http://127.0.0.1:\(server.port)")!,
             authFileURL: authURL,
             secretStore: MemorySecretStore(),
             defaults: defaults

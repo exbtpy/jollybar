@@ -24,13 +24,14 @@ macos/Sources/GrokUsageBar/
 ├── GrokUsageBarApp.swift
 ├── UsageService.swift          # polling, history, notifications
 ├── UsageProvider.swift         # weekly pool + Management API
+├── CursorUsage.swift           # Grok Bot via the Cursor Admin API
 ├── GrokBillingParser.swift     # credits JSON, isolated on purpose
 ├── GrokAuthFile.swift          # ~/.grok/auth.json
 ├── PopoverView.swift
-└── MenuBarIconRenderer.swift   # drawn glyph, not a vendor logo
+└── MenuBarIconRenderer.swift   # GB / Wk meters, drawn glyph
 ```
 
-The weekly-pool request and its response fields are documented in the README. Change `GrokBillingParser.swift` when a live probe disagrees with an assumption, and add a test next to the fixture.
+The weekly-pool request and the Cursor requests are documented in the README, including which fields are assumed. Change `GrokBillingParser.swift` or `CursorUsage.swift` when a live probe disagrees, and add a test next to the fixture.
 
 ## Mock server
 
