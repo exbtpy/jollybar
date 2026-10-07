@@ -127,6 +127,21 @@ final class UsagePaceTests: XCTestCase {
         XCTAssertTrue(line.contains("4d 15h"))
     }
 
+    func testResetLineKeepsEveningHoursOnATwentyFourHourClock() {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(secondsFromGMT: 0)!
+        let now = Date(timeIntervalSince1970: 1_791_396_000) // 2026-10-07 18:00:00 UTC
+        let reset = now.addingTimeInterval(24 * 3600)
+        let line = UsagePaceFormat.resetLine(
+            reset: reset,
+            now: now,
+            locale: Locale(identifier: "en_US"),
+            calendar: calendar
+        )
+        XCTAssertTrue(line.contains("18:00"), line)
+        XCTAssertFalse(line.contains("06:00"), line)
+    }
+
     func testCelebrationPlaysOncePerNewWindow() {
         let previous = Date(timeIntervalSince1970: 1_000)
         let current = previous.addingTimeInterval(7 * 24 * hour)

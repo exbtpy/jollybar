@@ -106,7 +106,7 @@ enum UsagePaceFormat {
             return L10n.text("reset.now", "Resets now")
         }
         let stamp = reset.formatted(
-            JollyClock.style(locale: locale, calendar: calendar)
+            JollyClock.style(locale: locale, calendar: calendar, twentyFourHour: true)
                 .weekday(.abbreviated)
                 .hour(.twoDigits(amPM: .omitted))
                 .minute(.twoDigits)
@@ -180,10 +180,17 @@ enum JollyClock {
         locale: Locale,
         calendar: Calendar,
         date: Date.FormatStyle.DateStyle = .omitted,
-        time: Date.FormatStyle.TimeStyle = .omitted
+        time: Date.FormatStyle.TimeStyle = .omitted,
+        twentyFourHour: Bool = false
     ) -> Date.FormatStyle {
         var calendar = calendar
         calendar.locale = locale
+        var locale = locale
+        if twentyFourHour {
+            // `.hour(.twoDigits(amPM: .omitted))` is a 12-hour field. The cycle
+            // keeps 18:00 as 18:00 on macOS 14, where the clock argument is unavailable.
+            locale.hourCycle = .zeroToTwentyThree
+        }
         var style = Date.FormatStyle(date: date, time: time)
         style.locale = locale
         style.calendar = calendar
