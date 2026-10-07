@@ -3,7 +3,7 @@
 import PackageDescription
 
 let package = Package(
-    name: "GrokUsageBar",
+    name: "Jollybar",
     defaultLocalization: "en",
     platforms: [
         .macOS(.v14)
@@ -13,11 +13,11 @@ let package = Package(
     ],
     targets: [
         .executableTarget(
-            name: "GrokUsageBar",
+            name: "Jollybar",
             dependencies: [
                 .product(name: "Sparkle", package: "Sparkle")
             ],
-            path: "Sources/GrokUsageBar",
+            path: "Sources/Jollybar",
             resources: [
                 .process("Resources")
             ],
@@ -26,9 +26,9 @@ let package = Package(
             ]
         ),
         .testTarget(
-            name: "GrokUsageBarTests",
-            dependencies: ["GrokUsageBar"],
-            path: "Tests/GrokUsageBarTests"
+            name: "JollybarTests",
+            dependencies: ["Jollybar"],
+            path: "Tests/JollybarTests"
         )
     ]
 )

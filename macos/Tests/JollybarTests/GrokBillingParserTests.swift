@@ -1,5 +1,5 @@
 import XCTest
-@testable import GrokUsageBar
+@testable import Jollybar
 
 final class GrokBillingParserTests: XCTestCase {
     func testClaudiaCapturedWeeklyShape() throws {

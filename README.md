@@ -1,21 +1,23 @@
-# Grok Usage Bar
+# Jollybar
 
-A macOS menu bar app that shows the shared weekly Grok usage pool.
+A macOS menu bar app for Grok Bot weekly usage, plus the SuperGrok pool or Cursor Models.
+
+Jollybar is an unofficial project. It is not affiliated with xAI, SpaceXAI, or Cursor.
 
 This is a fork of [Blimp-Labs/claude-usage-bar](https://github.com/Blimp-Labs/claude-usage-bar) at commit `7232e065b8100f4280c3a26a9fcb6503b73bae15`. The original project is Copyright (c) 2026, Krystian, and remains under the BSD 2-Clause license in `LICENSE`. Upstream history is preserved on `main`.
 
 The Grok Bot session reader is adapted from [grokbot-meter](https://github.com/nuno/grokbot-meter) (MIT, Copyright (c) 2026 Nuno Costa). SuperGrok category names follow [Grok-Rate-Limit-Display](https://github.com/blankspeaker/Grok-Rate-Limit-Display) (MIT, Copyright (c) 2026 blankspeaker). Both notices are in `LICENSE`.
 
-The menu bar shows two short meters, in the same stacked layout as the original Claude Usage Bar. The top bar is **GB** (Grok Bot weekly usage from the Grok Bot app on this Mac). The bottom bar is **Wk** (SuperGrok) only when the signed-in grok.com account has a weekly pool. Otherwise the bottom bar is **CM** (Cursor Models). Other Models and on-demand spend sit in Details. Settings can switch the menu bar between Classic (chart glyph) and Companion (an original pet that follows Grok Bot weekly usage). The pet animation runs only while the popover is open. Each source fails on its own: a grok.com error does not clear Grok Bot, and the other way around.
+The menu bar shows two short meters, in the same stacked layout as the original Claude Usage Bar. The top bar is **GB** (Grok Bot weekly usage from the Grok Bot app on this Mac). The bottom bar is **Wk** (SuperGrok) only when the signed-in grok.com account has a weekly pool. Otherwise the bottom bar is **CM** (Cursor Models). Other Models and on-demand spend sit in Details. Settings can switch the menu bar between Classic (chart glyph) and Bud (a pet that follows Grok Bot weekly usage). Bud's animation runs only while the popover is open. Each source fails on its own: a grok.com error does not clear Grok Bot, and the other way around.
 
 ## Build
 
 Requires Xcode 15+ / Swift 5.9+ and macOS 14 (Sonoma) or later.
 
 ```sh
-git clone https://github.com/exbtpy/grok-usage-bar.git
-cd grok-usage-bar
-make app        # build GrokUsageBar.app
+git clone https://github.com/exbtpy/jollybar.git
+cd jollybar
+make app        # build Jollybar.app
 make install    # copy it to /Applications
 ```
 
@@ -37,7 +39,7 @@ That writes `~/.grok/auth.json` (or `$GROK_HOME/auth.json`). Open the menu bar i
 
 Tokens are not printed. When the access token is near expiry and the file has a refresh token, issuer, and client id, the app refreshes it with the issuer's OIDC token endpoint and writes the new token back to the same file. If refresh fails, the popover asks you to run `grok login` again. The auth file is never deleted by this app.
 
-History is stored in `~/.config/grok-usage-bar/history.json` (mode `0600`). That directory name is `CONFIG_DIR_NAME` in `macos/identity.env`. The grok.com pool and the Grok Bot session are polled every 5, 15, 30, or 60 minutes. The optional Teams Admin API is polled at most once an hour. Refresh can ask Cursor sooner, except after HTTP 429, which waits for `Retry-After`. Notification thresholds for Grok Bot and the weekly pool are separate and live in Settings.
+History is stored in `~/.config/jollybar/history.json` (mode `0600`). That directory name is `CONFIG_DIR_NAME` in `macos/identity.env`. The first launch copies `~/.config/grok-usage-bar`, the previous preferences, and any Keychain items saved under the previous bundle id. An existing file in the new location is left as it is. The grok.com pool and the Grok Bot session are polled every 5, 15, 30, or 60 minutes. The optional Teams Admin API is polled at most once an hour. Refresh can ask Cursor sooner, except after HTTP 429, which waits for `Retry-After`. Notification thresholds for Grok Bot and the weekly pool are separate and live in Settings.
 
 ## Optional Management API
 
@@ -50,7 +52,7 @@ This is developer API credit and spend. It is not the SuperGrok weekly pool. The
 
 ## Grok Bot weekly usage
 
-The primary Grok Bot source is the desktop app's Cursor session, read the same way as grokbot-meter. Parsing and the request live in `macos/Sources/GrokUsageBar/CursorDashboard.swift`.
+The primary Grok Bot source is the desktop app's Cursor session, read the same way as grokbot-meter. Parsing and the request live in `macos/Sources/Jollybar/CursorDashboard.swift`.
 
 The app looks for `sand-secrets.json` in:
 
@@ -72,9 +74,9 @@ Each call is `POST` with body `{}` and headers `Authorization: Bearer`, `Content
 
 ## Grok Bot spend (Teams fallback)
 
-Settings can store a Cursor API key (`crsr_…`) in the Keychain (account `cursor-api-key`, service `com.exbtpy.GrokUsageBar`, the bundle id in `macos/identity.env`). This is optional. It is not used while a Grok Bot session file is present, including when that session is expired. The request is HTTP Basic with the key as the username and an empty password. An optional member email selects your row in team spend. An optional monthly budget is the percent denominator when that row has no per-user limit. An optional `org_…` id switches the calls to the organization routes and uses the contract end as the reset. The organization pool limit is not treated as a personal Grok Bot limit.
+Settings can store a Cursor API key (`crsr_…`) in the Keychain (account `cursor-api-key`, service `com.exbtpy.Jollybar`, the bundle id in `macos/identity.env`). This is optional. It is not used while a Grok Bot session file is present, including when that session is expired. The request is HTTP Basic with the key as the username and an empty password. An optional member email selects your row in team spend. An optional monthly budget is the percent denominator when that row has no per-user limit. An optional `org_…` id switches the calls to the organization routes and uses the contract end as the reset. The organization pool limit is not treated as a personal Grok Bot limit.
 
-Parsing lives in `macos/Sources/GrokUsageBar/CursorUsage.swift`.
+Parsing lives in `macos/Sources/Jollybar/CursorUsage.swift`.
 
 | Item | What we use | Confidence |
 | --- | --- | --- |
@@ -99,13 +101,13 @@ GET https://cli-chat-proxy.grok.com/v1/billing?format=credits
 Authorization: Bearer <session key from ~/.grok/auth.json>
 X-XAI-Token-Auth: xai-grok-cli
 x-userid: <user_id, when present>
-x-grok-client-version: grok-usage-bar
+x-grok-client-version: jollybar
 Accept: application/json
 ```
 
 `x-grok-client-version` is this app's name, not the CLI's version. A captured call succeeded with only the bearer and `X-XAI-Token-Auth`. The CLI also sends `x-grok-client-mode`; this app does not, because that value is an internal process mode.
 
-Parsing lives in `macos/Sources/GrokUsageBar/GrokBillingParser.swift`. Adjust it there if a live account disagrees with the table below.
+Parsing lives in `macos/Sources/Jollybar/GrokBillingParser.swift`. Adjust it there if a live account disagrees with the table below.
 
 | Item | What we use | Confidence |
 | --- | --- | --- |
@@ -185,19 +187,21 @@ It also serves the three `POST /aiserver.v1.DashboardService/…` routes with Be
 Only loopback overrides are honored, so tokens and API keys cannot be redirected off the machine:
 
 ```sh
-GROK_USAGE_BAR_AUTH_FILE=/tmp/grok-auth.json \
-GROK_USAGE_BAR_PROXY_BASE=http://127.0.0.1:8080/v1 \
-GROK_USAGE_BAR_MANAGEMENT_BASE=http://127.0.0.1:8080 \
-GROK_USAGE_BAR_CURSOR_BASE=http://127.0.0.1:8080 \
-GROK_USAGE_BAR_CURSOR_DASHBOARD_BASE=http://127.0.0.1:8080 \
-GROK_USAGE_BAR_SAND_SECRETS=/tmp/sand-secrets.json \
-  macos/GrokUsageBar.app/Contents/MacOS/GrokUsageBar
+JOLLYBAR_AUTH_FILE=/tmp/grok-auth.json \
+JOLLYBAR_PROXY_BASE=http://127.0.0.1:8080/v1 \
+JOLLYBAR_MANAGEMENT_BASE=http://127.0.0.1:8080 \
+JOLLYBAR_CURSOR_BASE=http://127.0.0.1:8080 \
+JOLLYBAR_CURSOR_DASHBOARD_BASE=http://127.0.0.1:8080 \
+JOLLYBAR_SAND_SECRETS=/tmp/sand-secrets.json \
+  macos/Jollybar.app/Contents/MacOS/Jollybar
 ```
+
+The previous `GROK_USAGE_BAR_*` names still work when the matching `JOLLYBAR_*` variable is unset.
 
 `/tmp/grok-auth.json` needs a grok-cli-shaped session entry. Any non-empty `key` is accepted by the mock. The Cursor key is entered in Settings (the mock accepts any Basic key that starts with `crsr_` and is at least 16 characters).
 
 ## Updates
 
-Sparkle is bundled. A release build sets `SUFeedURL` to this repository's GitHub Pages appcast (`https://exbtpy.github.io/grok-usage-bar/appcast.xml`). The app checks that feed only when `SUPublicEDKey` in `macos/Resources/Info.plist` is your key. Until that placeholder is replaced, release builds stay quiet. The release workflow signs the appcast with `SPARKLE_PRIVATE_KEY` and skips that step when the secret is absent. It refuses a repository, feed, or public key that belongs to Blimp-Labs/claude-usage-bar.
+Sparkle is bundled. A release build sets `SUFeedURL` to this repository's GitHub Pages appcast (`https://exbtpy.github.io/jollybar/appcast.xml`). The app checks that feed only when `SUPublicEDKey` in `macos/Resources/Info.plist` is your key. Until that placeholder is replaced, release builds stay quiet. The release workflow signs the appcast with `SPARKLE_PRIVATE_KEY` and skips that step when the secret is absent. It refuses a repository, feed, or public key that belongs to Blimp-Labs/claude-usage-bar.
 
 Cutting a release, the Apple secrets, and the Sparkle key are in [`docs/RELEASING.md`](docs/RELEASING.md). The product name, bundle id, disk image name, and config directory are `macos/identity.env` plus `AppIdentity.swift`.

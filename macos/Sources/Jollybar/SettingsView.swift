@@ -133,9 +133,9 @@ struct SettingsWindowContent: View {
                     set: { menuThemeRaw = $0 }
                 )) {
                     Text("Classic").tag(MenuTheme.classic.rawValue)
-                    Text("Companion").tag(MenuTheme.companion.rawValue)
+                    Text(AppIdentity.companionName).tag(MenuTheme.companion.rawValue)
                 }
-                Text("Classic keeps the two bars and a chart glyph. Companion adds a pet that follows Grok Bot weekly usage. The pet animation runs only while the menu is open.")
+                Text("Classic keeps the two bars and a chart glyph. \(AppIdentity.companionName) follows Grok Bot weekly usage. The animation runs only while the menu is open.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
 

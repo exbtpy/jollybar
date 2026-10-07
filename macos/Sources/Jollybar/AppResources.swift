@@ -2,7 +2,7 @@ import Foundation
 
 private final class AppResourceBundleFinder {}
 
-func grokUsageBarResourceBundle(
+func jollybarResourceBundle(
     mainBundle: Bundle = .main,
     finderBundle: Bundle = Bundle(for: AppResourceBundleFinder.self)
 ) -> Bundle? {

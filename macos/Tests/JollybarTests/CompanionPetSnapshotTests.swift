@@ -1,7 +1,7 @@
 import AppKit
 import SwiftUI
 import XCTest
-@testable import GrokUsageBar
+@testable import Jollybar
 
 /// Renders one still of each companion mood. Headless ImageRenderer can fail
 /// without a window server; that skips the test so CI stays green, and the

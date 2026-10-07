@@ -1,6 +1,6 @@
 # Releasing
 
-Names live in [`macos/identity.env`](../macos/identity.env) and [`AppIdentity.swift`](../macos/Sources/GrokUsageBar/AppIdentity.swift). A unit test fails if they disagree. The disk-image background slot is [`macos/Resources/dmg/background.png`](../macos/Resources/dmg/background.png) (the window is 680×420). Delete that PNG and the image still contains the app plus an Applications symlink.
+Names live in [`macos/identity.env`](../macos/identity.env) and [`AppIdentity.swift`](../macos/Sources/Jollybar/AppIdentity.swift). A unit test fails if they disagree. The disk-image background slot is [`macos/Resources/dmg/background.png`](../macos/Resources/dmg/background.png) (the window is 680×420). Delete that PNG and the image still contains the app plus an Applications symlink.
 
 The tag is the version. `v1.2.3` stamps `CFBundleShortVersionString` `1.2.3`.
 
@@ -91,7 +91,7 @@ The public key and the private key are a pair. The upstream Claude Usage Bar key
 https://<owner>.github.io/<repo>/appcast.xml
 ```
 
-For this repository that is `https://exbtpy.github.io/grok-usage-bar/appcast.xml`. The app checks for updates only when that URL and a real public key are both in the built app. Automatic checks stay off until someone turns them on in Settings.
+For this repository that is `https://exbtpy.github.io/jollybar/appcast.xml`. The workflow builds that URL from the GitHub repository name, so rename the repository to `exbtpy/jollybar` before the first published release. GitHub redirects the old repository URL. Pages uses the new name, and an old Pages site does not follow that redirect. The app checks for updates only when that URL and a real public key are both in the built app. Automatic checks stay off until someone turns them on in Settings.
 
 Optional: secret `SPARKLE_PUBLIC_KEY` overrides the plist value for that build. The plist is the copy that stays in git.
 
@@ -102,13 +102,13 @@ Optional: secret `SPARKLE_PUBLIC_KEY` overrides the plist value for that build. 
 ### Homebrew tap
 
 1. Create a public repository `exbtpy/homebrew-tap`.
-2. Copy [`Casks/grok-usage-bar.rb`](../Casks/grok-usage-bar.rb) to `Casks/grok-usage-bar.rb` in that repo and commit it.
+2. Copy [`Casks/jollybar.rb`](../Casks/jollybar.rb) to `Casks/jollybar.rb` in that repo and commit it. If the tap already has `Casks/grok-usage-bar.rb`, remove that file in the same commit. `brew install jollybar` is the cask.
 3. Add `HOMEBREW_TAP_TOKEN`.
 
 The release workflow then updates `version` and `sha256` on that file. Without the token, or before the repository exists, the step is skipped. To bump by hand:
 
 ```sh
-shasum -a 256 GrokUsageBar.dmg
+shasum -a 256 Jollybar.dmg
 ```
 
 Put the digest in `sha256` and the tag version (no leading `v`) in `version`. Add `auto_updates true` to the cask after a shipped build contains your `SUPublicEDKey`, so Homebrew leaves updates to Sparkle.
@@ -141,3 +141,13 @@ A dry run uploads the DMG and zip as Actions artifacts and does not publish a Re
 5. Update `Casks/<config-dir>.rb` (token, `app`, `url`, `name`, `zap`) and the copy in the tap.
 
 Do not point `SUFeedURL` or `SUPublicEDKey` at Blimp-Labs/claude-usage-bar.
+
+## Existing installs
+
+Quit the previous app before opening Jollybar so its preferences are flushed. The first launch then copies, once:
+
+- `~/.config/grok-usage-bar` is moved to `~/.config/jollybar` when the new directory is absent. If the new directory is already there, files that exist are left alone and missing files are copied. The old directory is removed only by that move.
+- Keys in `~/Library/Preferences/com.exbtpy.GrokUsageBar.plist` are copied when the new bundle id does not already have them.
+- Keychain items `management-api-key` and `cursor-api-key` are copied to service `com.exbtpy.Jollybar`. The old items stay. A denied read is tried again on the next launch. macOS may ask for permission to read the old item.
+
+Launch at login is tied to the bundle id. Turn it on again in Settings. Replace `GrokUsageBar.app` in `/Applications` with `Jollybar.app`; they are different bundles, so both can sit side by side until the old one is deleted.

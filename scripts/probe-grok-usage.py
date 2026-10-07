@@ -81,7 +81,7 @@ def main():
     request.add_header("Authorization", f"Bearer {token}")
     request.add_header("X-XAI-Token-Auth", "xai-grok-cli")
     request.add_header("Accept", "application/json")
-    request.add_header("x-grok-client-version", "grok-usage-bar-probe")
+    request.add_header("x-grok-client-version", "jollybar-probe")
     if header_safe(user_id):
         request.add_header("x-userid", user_id)
 
@@ -116,7 +116,7 @@ def main():
 def resolve_auth_path(explicit):
     if explicit:
         return Path(explicit).expanduser()
-    override = os.environ.get("GROK_USAGE_BAR_AUTH_FILE")
+    override = os.environ.get("JOLLYBAR_AUTH_FILE") or os.environ.get("GROK_USAGE_BAR_AUTH_FILE")
     if override:
         return Path(override).expanduser()
     home = os.environ.get("GROK_HOME")

@@ -1,5 +1,5 @@
 import XCTest
-@testable import GrokUsageBar
+@testable import Jollybar
 
 @MainActor
 final class UsageHistoryServiceTests: XCTestCase {

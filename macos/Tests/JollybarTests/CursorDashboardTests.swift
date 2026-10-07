@@ -1,5 +1,5 @@
 import XCTest
-@testable import GrokUsageBar
+@testable import Jollybar
 
 final class CursorDashboardTests: XCTestCase {
     private let futureToken = "eyJhbGciOiJub25lIiwidHlwIjoiSldUIn0.eyJleHAiOjIwMDAwMDAwMDB9.sig"
@@ -143,6 +143,7 @@ final class CursorDashboardTests: XCTestCase {
         XCTAssertEqual(CompanionMood.tired.mouth, .flat)
         XCTAssertEqual(CompanionMood.worried.mouth, .frown)
         XCTAssertEqual(CompanionMood.asleep.mouth, .flat)
+        XCTAssertEqual(CompanionMood.playful.accessibilityLabel, "Bud, Energetic")
         XCTAssertGreaterThan(MouthCurve.smile.depth, 0.5)
         XCTAssertGreaterThan(MouthCurve.softSmile.depth, 0.5)
         XCTAssertEqual(MouthCurve.flat.depth, 0.5)

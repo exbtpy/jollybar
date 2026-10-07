@@ -34,7 +34,7 @@ enum CompanionMood: String {
     }
 
     var accessibilityLabel: String {
-        "Companion, \(caption)"
+        "\(AppIdentity.companionName), \(caption)"
     }
 
     /// The mouth that belongs with this label. A smile bows downward.
@@ -189,6 +189,8 @@ struct CompanionPetPose: View {
                     .offset(x: shake, y: bob)
             }
             .frame(width: 96, height: 88)
+            Text(AppIdentity.companionName)
+                .font(.caption.weight(.semibold))
             Text(mood.caption)
                 .font(.caption2)
                 .foregroundStyle(mood.accent)

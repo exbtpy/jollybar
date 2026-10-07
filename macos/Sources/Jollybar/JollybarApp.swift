@@ -1,7 +1,12 @@
 import SwiftUI
 
 @main
-struct GrokUsageBarApp: App {
+struct JollybarApp: App {
+    /// Runs before the services and `@AppStorage` read the old config, preferences, or Keychain.
+    private let migrated: Bool = {
+        IdentityMigration.migrateIfNeeded()
+        return true
+    }()
     @StateObject private var service = UsageService()
     @StateObject private var historyService = UsageHistoryService()
     @StateObject private var notificationService = NotificationService()
@@ -25,7 +30,13 @@ struct GrokUsageBarApp: App {
                 theme: MenuTheme(rawValue: menuThemeRaw) ?? .classic,
                 mood: service.companionMood
             ))
+                .accessibilityLabel(
+                    MenuTheme(rawValue: menuThemeRaw) == .companion
+                        ? AppIdentity.companionName
+                        : AppIdentity.displayName
+                )
                 .task {
+                    _ = migrated
                     if service.isAuthenticated && !UserDefaults.standard.bool(forKey: "setupComplete") {
                         UserDefaults.standard.set(true, forKey: "setupComplete")
                     }

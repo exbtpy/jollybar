@@ -5,11 +5,11 @@
      Replace SUPublicEDKey using docs/RELEASING.md. The placeholder is stripped at package time. -->
 <dict>
     <key>CFBundleIdentifier</key>
-    <string>com.exbtpy.GrokUsageBar</string>
+    <string>com.exbtpy.Jollybar</string>
     <key>CFBundleName</key>
-    <string>GrokUsageBar</string>
+    <string>Jollybar</string>
     <key>CFBundleDisplayName</key>
-    <string>Grok Usage Bar</string>
+    <string>Jollybar</string>
     <key>CFBundleVersion</key>
     <string>1</string>
     <key>CFBundleShortVersionString</key>
@@ -17,7 +17,7 @@
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>CFBundleExecutable</key>
-    <string>GrokUsageBar</string>
+    <string>Jollybar</string>
     <key>CFBundleIconFile</key>
     <string>AppIcon</string>
     <key>CFBundleIconName</key>

@@ -2,21 +2,23 @@
 # Names mirror macos/identity.env. Copy this file into the tap.
 # The release workflow rewrites `version` and `sha256` when HOMEBREW_TAP_TOKEN is set.
 # `sha256` below is a placeholder. `brew install` will reject it until a release fills it in.
-cask "grok-usage-bar" do
+cask "jollybar" do
   version "1.0.0"
   sha256 "REPLACE_ON_RELEASE"
 
-  url "https://github.com/exbtpy/grok-usage-bar/releases/download/v#{version}/GrokUsageBar.dmg"
-  name "Grok Usage Bar"
+  url "https://github.com/exbtpy/jollybar/releases/download/v#{version}/Jollybar.dmg"
+  name "Jollybar"
   desc "Menu bar meters for Grok Bot and the SuperGrok weekly pool"
-  homepage "https://github.com/exbtpy/grok-usage-bar"
+  homepage "https://github.com/exbtpy/jollybar"
 
   depends_on macos: ">= :sonoma"
 
-  app "GrokUsageBar.app"
+  app "Jollybar.app"
 
   zap trash: [
+    "~/.config/jollybar",
     "~/.config/grok-usage-bar",
+    "~/Library/Preferences/com.exbtpy.Jollybar.plist",
     "~/Library/Preferences/com.exbtpy.GrokUsageBar.plist",
   ]
 end

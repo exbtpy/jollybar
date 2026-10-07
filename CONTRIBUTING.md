@@ -1,4 +1,4 @@
-# Contributing to Grok Usage Bar
+# Contributing to Jollybar
 
 Fork of [Blimp-Labs/claude-usage-bar](https://github.com/Blimp-Labs/claude-usage-bar) (BSD 2-Clause, Copyright (c) 2026, Krystian). Keep that notice in `LICENSE`.
 
@@ -11,8 +11,8 @@ Fork of [Blimp-Labs/claude-usage-bar](https://github.com/Blimp-Labs/claude-usage
 ## Getting started
 
 ```sh
-git clone https://github.com/exbtpy/grok-usage-bar.git
-cd grok-usage-bar
+git clone https://github.com/exbtpy/jollybar.git
+cd jollybar
 make app
 cd macos && swift test
 ```
@@ -20,8 +20,8 @@ cd macos && swift test
 ## Layout
 
 ```
-macos/Sources/GrokUsageBar/
-├── GrokUsageBarApp.swift
+macos/Sources/Jollybar/
+├── JollybarApp.swift
 ├── UsageService.swift          # polling, history, notifications
 ├── UsageProvider.swift         # weekly pool + Management API
 ├── CursorUsage.swift           # Grok Bot via the Cursor Admin API
@@ -47,4 +47,4 @@ Release builds use this repository's appcast. The steps to generate the EdDSA ke
 
 ## Names
 
-`macos/identity.env` and `macos/Sources/GrokUsageBar/AppIdentity.swift` are the rename points. Keep them in sync.
+`macos/identity.env` and `macos/Sources/Jollybar/AppIdentity.swift` are the rename points. Keep them in sync. The companion pet is Bud.

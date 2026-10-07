@@ -1,5 +1,5 @@
 import XCTest
-@testable import GrokUsageBar
+@testable import Jollybar
 
 final class PollingOptionFormatterTests: XCTestCase {
     func testLocalizedPollingIntervalUsesExpectedCompactLabels() {

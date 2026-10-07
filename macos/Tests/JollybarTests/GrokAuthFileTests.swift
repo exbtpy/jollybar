@@ -1,5 +1,5 @@
 import XCTest
-@testable import GrokUsageBar
+@testable import Jollybar
 
 final class GrokAuthFileTests: XCTestCase {
     private let now = Date(timeIntervalSince1970: 1_800_000_000)
@@ -168,7 +168,34 @@ final class GrokAuthFileTests: XCTestCase {
         XCTAssertFalse(AppUpdater.isUsableUpdateFeed("https://example.com/claude-usage-bar/appcast.xml"))
         XCTAssertFalse(AppUpdater.isUsableUpdateFeed(nil))
         XCTAssertFalse(AppUpdater.isUsableUpdateFeed("http://example.com/appcast.xml"))
-        XCTAssertTrue(AppUpdater.isUsableUpdateFeed("https://example.com/grok-usage-bar/appcast.xml"))
+        XCTAssertTrue(AppUpdater.isUsableUpdateFeed("https://example.com/jollybar/appcast.xml"))
+        XCTAssertTrue(AppUpdater.isUsableUpdateFeed("https://exbtpy.github.io/jollybar/appcast.xml"))
+    }
+
+    func testLegacyEnvironmentNamesStillResolve() {
+        XCTAssertEqual(
+            EndpointOverride.resolvedURL(
+                environment: ["GROK_USAGE_BAR_PROXY_BASE": "http://127.0.0.1:9/v1"],
+                key: EndpointOverride.proxyKey,
+                defaultURL: EndpointOverride.defaultProxyBase
+            ).absoluteString,
+            "http://127.0.0.1:9/v1"
+        )
+        XCTAssertEqual(
+            EndpointOverride.resolvedURL(
+                environment: [
+                    EndpointOverride.proxyKey: "http://127.0.0.1:8/v1",
+                    "GROK_USAGE_BAR_PROXY_BASE": "http://127.0.0.1:9/v1"
+                ],
+                key: EndpointOverride.proxyKey,
+                defaultURL: EndpointOverride.defaultProxyBase
+            ).absoluteString,
+            "http://127.0.0.1:8/v1"
+        )
+        let legacyAuth = EndpointOverride.authFileURL(environment: [
+            "GROK_USAGE_BAR_AUTH_FILE": "/tmp/grok-auth.json"
+        ])
+        XCTAssertEqual(legacyAuth.path, "/tmp/grok-auth.json")
     }
 
     private func entry(token: String, mode: String, expiresAt: Date? = nil) -> [String: Any] {

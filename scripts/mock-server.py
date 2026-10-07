@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Mock Grok billing server for Grok Usage Bar.
+Mock Grok billing server for Jollybar.
 
 Serves the undocumented SuperGrok credits payload and the documented
 Management API balance/usage routes, plus a loopback OIDC refresh.
@@ -9,10 +9,13 @@ Management API balance/usage routes, plus a loopback OIDC refresh.
 
 Point the app at it (loopback only):
 
-    GROK_USAGE_BAR_AUTH_FILE=/tmp/grok-auth.json \\
-    GROK_USAGE_BAR_PROXY_BASE=http://127.0.0.1:8080/v1 \\
-    GROK_USAGE_BAR_MANAGEMENT_BASE=http://127.0.0.1:8080 \\
-        macos/GrokUsageBar.app/Contents/MacOS/GrokUsageBar
+    JOLLYBAR_AUTH_FILE=/tmp/grok-auth.json \\
+    JOLLYBAR_PROXY_BASE=http://127.0.0.1:8080/v1 \\
+    JOLLYBAR_MANAGEMENT_BASE=http://127.0.0.1:8080 \\
+        macos/Jollybar.app/Contents/MacOS/Jollybar
+
+The previous ``GROK_USAGE_BAR_*`` names still work when the matching
+``JOLLYBAR_*`` variable is unset.
 
 The auth file must be a grok-cli-shaped JSON document. Any non-empty
 ``key`` is accepted. Scenario ``stale_then_ok`` returns 401 until the

@@ -1,12 +1,29 @@
 import Foundation
 
 enum EndpointOverride {
-    static let proxyKey = "GROK_USAGE_BAR_PROXY_BASE"
-    static let managementKey = "GROK_USAGE_BAR_MANAGEMENT_BASE"
-    static let cursorKey = "GROK_USAGE_BAR_CURSOR_BASE"
-    static let dashboardKey = "GROK_USAGE_BAR_CURSOR_DASHBOARD_BASE"
-    static let authFileKey = "GROK_USAGE_BAR_AUTH_FILE"
-    static let sandSecretsKey = "GROK_USAGE_BAR_SAND_SECRETS"
+    static let proxyKey = "JOLLYBAR_PROXY_BASE"
+    static let managementKey = "JOLLYBAR_MANAGEMENT_BASE"
+    static let cursorKey = "JOLLYBAR_CURSOR_BASE"
+    static let dashboardKey = "JOLLYBAR_CURSOR_DASHBOARD_BASE"
+    static let authFileKey = "JOLLYBAR_AUTH_FILE"
+    static let sandSecretsKey = "JOLLYBAR_SAND_SECRETS"
+
+    /// Names from before the rename. A set `JOLLYBAR_*` value wins.
+    static let legacyEnvironmentKeys: [String: String] = [
+        proxyKey: "GROK_USAGE_BAR_PROXY_BASE",
+        managementKey: "GROK_USAGE_BAR_MANAGEMENT_BASE",
+        cursorKey: "GROK_USAGE_BAR_CURSOR_BASE",
+        dashboardKey: "GROK_USAGE_BAR_CURSOR_DASHBOARD_BASE",
+        authFileKey: "GROK_USAGE_BAR_AUTH_FILE",
+        sandSecretsKey: "GROK_USAGE_BAR_SAND_SECRETS"
+    ]
+
+    static func value(in environment: [String: String], for key: String) -> String {
+        let primary = environment[key]?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        if !primary.isEmpty { return primary }
+        guard let legacy = legacyEnvironmentKeys[key] else { return "" }
+        return environment[legacy]?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+    }
 
     static let defaultProxyBase = URL(string: "https://cli-chat-proxy.grok.com/v1")!
     static let defaultManagementBase = URL(string: "https://management-api.x.ai")!
@@ -22,7 +39,7 @@ enum EndpointOverride {
         key: String,
         defaultURL: URL
     ) -> URL {
-        let raw = environment[key]?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let raw = value(in: environment, for: key)
         guard !raw.isEmpty else { return defaultURL }
         guard let url = URL(string: raw), isLoopbackHTTP(url) else {
             print("""
@@ -40,7 +57,7 @@ enum EndpointOverride {
         environment: [String: String] = ProcessInfo.processInfo.environment,
         fileManager: FileManager = .default
     ) -> URL? {
-        let raw = environment[sandSecretsKey]?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let raw = value(in: environment, for: sandSecretsKey)
         guard !raw.isEmpty else { return nil }
         return expandingTilde(raw, fileManager: fileManager)
     }
@@ -49,8 +66,8 @@ enum EndpointOverride {
         environment: [String: String] = ProcessInfo.processInfo.environment,
         fileManager: FileManager = .default
     ) -> URL {
-        if let override = environment[authFileKey]?.trimmingCharacters(in: .whitespacesAndNewlines),
-           !override.isEmpty {
+        let override = value(in: environment, for: authFileKey)
+        if !override.isEmpty {
             return expandingTilde(override, fileManager: fileManager)
         }
         if let home = environment["GROK_HOME"]?.trimmingCharacters(in: .whitespacesAndNewlines),

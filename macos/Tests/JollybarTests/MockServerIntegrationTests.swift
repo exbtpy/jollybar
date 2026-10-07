@@ -1,6 +1,6 @@
 import Darwin
 import XCTest
-@testable import GrokUsageBar
+@testable import Jollybar
 
 /// End-to-end tests against `scripts/mock-server.py`.
 @MainActor
@@ -399,7 +399,7 @@ final class MockServerIntegrationTests: XCTestCase {
             try data.write(to: authURL)
         }
 
-        let suite = "GrokUsageBarTests.\(UUID().uuidString)"
+        let suite = "JollybarTests.\(UUID().uuidString)"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
         defaults.removePersistentDomain(forName: suite)
         addTeardownBlock { defaults.removePersistentDomain(forName: suite) }
@@ -616,7 +616,7 @@ private final class MockServer {
         }
     }
 
-    /// `#filePath` is `<repo>/macos/Tests/GrokUsageBarTests/<file>.swift`.
+    /// `#filePath` is `<repo>/macos/Tests/JollybarTests/<file>.swift`.
     private static var repositoryRoot: URL {
         URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()

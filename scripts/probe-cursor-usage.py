@@ -7,7 +7,7 @@ and it is never printed. Emails, names, and ids are redacted. The string
 ``application_type`` is kept so you can see whether Grok Bot is labeled.
 
     CURSOR_API_KEY=crsr_... python3 scripts/probe-cursor-usage.py
-    python3 scripts/probe-cursor-usage.py --key-file ~/.config/grok-usage-bar/cursor-key
+    python3 scripts/probe-cursor-usage.py --key-file ~/.config/jollybar/cursor-key
     python3 scripts/probe-cursor-usage.py --fixture spend.json events.json
 
 Exit codes: 0 ok, 2 no key, 3 HTTP or URL error, 4 unreadable body.

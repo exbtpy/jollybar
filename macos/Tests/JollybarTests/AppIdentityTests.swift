@@ -1,6 +1,6 @@
 import Foundation
 import XCTest
-@testable import GrokUsageBar
+@testable import Jollybar
 
 final class AppIdentityTests: XCTestCase {
     func testSwiftConstantsMatchIdentityFile() throws {
@@ -31,9 +31,29 @@ final class AppIdentityTests: XCTestCase {
         let cask = try String(contentsOf: root.appendingPathComponent("Casks/\(AppIdentity.configDirectoryName).rb"), encoding: .utf8)
         XCTAssertTrue(cask.contains("cask \"\(AppIdentity.configDirectoryName)\""))
         XCTAssertTrue(cask.contains("app \"\(AppIdentity.productName).app\""))
+        XCTAssertTrue(cask.contains("name \"\(AppIdentity.displayName)\""))
+
+        let blocked = ["grok", "cursor", "xai"]
+        let identity = [
+            AppIdentity.productName,
+            AppIdentity.executableName,
+            AppIdentity.displayName,
+            AppIdentity.menuTitle,
+            AppIdentity.bundleIdentifier,
+            AppIdentity.configDirectoryName,
+            AppIdentity.diskImageName
+        ]
+        for name in identity {
+            let lowered = name.lowercased()
+            for word in blocked {
+                XCTAssertFalse(lowered.contains(word), "\(name) contains \(word)")
+            }
+        }
+        XCTAssertEqual(AppIdentity.companionName, "Bud")
+        XCTAssertEqual(MenuTheme.companion.rawValue, "companion")
     }
 
-    /// `#filePath` is `<repo>/macos/Tests/GrokUsageBarTests/<file>.swift`.
+    /// `#filePath` is `<repo>/macos/Tests/JollybarTests/<file>.swift`.
     private static func repositoryRoot() throws -> URL {
         let root = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()

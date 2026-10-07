@@ -1,11 +1,11 @@
 import XCTest
-@testable import GrokUsageBar
+@testable import Jollybar
 
 final class SettingsViewTests: XCTestCase {
     func testSupportsLaunchAtLoginManagementForSystemApplications() {
         XCTAssertTrue(
             supportsLaunchAtLoginManagement(
-                appURL: URL(fileURLWithPath: "/Applications/GrokUsageBar.app"),
+                appURL: URL(fileURLWithPath: "/Applications/Jollybar.app"),
                 installDirectories: [
                     URL(fileURLWithPath: "/Applications", isDirectory: true),
                     URL(fileURLWithPath: "/Users/test/Applications", isDirectory: true)
@@ -17,7 +17,7 @@ final class SettingsViewTests: XCTestCase {
     func testSupportsLaunchAtLoginManagementForUserApplications() {
         XCTAssertTrue(
             supportsLaunchAtLoginManagement(
-                appURL: URL(fileURLWithPath: "/Users/test/Applications/GrokUsageBar.app"),
+                appURL: URL(fileURLWithPath: "/Users/test/Applications/Jollybar.app"),
                 installDirectories: [
                     URL(fileURLWithPath: "/Applications", isDirectory: true),
                     URL(fileURLWithPath: "/Users/test/Applications", isDirectory: true)
@@ -29,7 +29,7 @@ final class SettingsViewTests: XCTestCase {
     func testDoesNotSupportLaunchAtLoginOutsideApplicationsFolders() {
         XCTAssertFalse(
             supportsLaunchAtLoginManagement(
-                appURL: URL(fileURLWithPath: "/Users/test/Downloads/GrokUsageBar.app"),
+                appURL: URL(fileURLWithPath: "/Users/test/Downloads/Jollybar.app"),
                 installDirectories: [
                     URL(fileURLWithPath: "/Applications", isDirectory: true),
                     URL(fileURLWithPath: "/Users/test/Applications", isDirectory: true)
