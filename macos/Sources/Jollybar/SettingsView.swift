@@ -86,7 +86,8 @@ struct SettingsWindowContent: View {
     @State private var cursorBudget = ""
     @State private var advancedExpanded = false
     @State private var didApplyAdvancedDefault = false
-    @AppStorage(MenuTheme.defaultsKey) private var menuThemeRaw = MenuTheme.classic.rawValue
+    @AppStorage(MenuTheme.defaultsKey) private var menuThemeRaw = MenuTheme.defaultTheme.rawValue
+    @AppStorage(UsagePercentStyle.defaultsKey) private var percentStyleRaw = UsagePercentStyle.used.rawValue
 
     var body: some View {
         let heights = SettingsLayout.contentHeights(visibleHeight: SettingsLayout.currentVisibleHeight)
@@ -125,21 +126,38 @@ struct SettingsWindowContent: View {
 
     private var settingsForm: some View {
         Form {
-            Section("General") {
+            Section(L10n.text("settings.general", "General")) {
                 LaunchAtLoginToggle()
 
-                Picker("Menu bar", selection: Binding(
+                Picker(L10n.text("settings.menuBar", "Menu bar"), selection: Binding(
                     get: { menuThemeRaw },
                     set: { menuThemeRaw = $0 }
                 )) {
-                    Text("Classic").tag(MenuTheme.classic.rawValue)
+                    Text(L10n.text("settings.classic", "Classic")).tag(MenuTheme.classic.rawValue)
                     Text(AppIdentity.companionName).tag(MenuTheme.companion.rawValue)
                 }
-                Text("Classic keeps the two bars and a chart glyph. \(AppIdentity.companionName) follows Grok Bot weekly usage. The animation runs only while the menu is open.")
+                Text(L10n.text(
+                    "settings.menuBarHelp",
+                    "Classic keeps the two bars and a chart glyph. Bud is the menu-bar face and the weekly meter. The animation runs only while the menu is open."
+                ))
                     .font(.caption)
                     .foregroundStyle(.secondary)
 
-                Picker("Polling Interval", selection: Binding(
+                Picker(L10n.text("settings.number", "Big number"), selection: Binding(
+                    get: { percentStyleRaw },
+                    set: { percentStyleRaw = $0 }
+                )) {
+                    Text(UsagePercentStyle.used.settingsTitle).tag(UsagePercentStyle.used.rawValue)
+                    Text(UsagePercentStyle.left.settingsTitle).tag(UsagePercentStyle.left.rawValue)
+                }
+                Text(L10n.text(
+                    "settings.numberHelp",
+                    "The big number shows how much of the week is used, or how much is left. The menu bar always shows used, so the color still means the same thing."
+                ))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+
+                Picker(L10n.text("settings.polling", "Polling Interval"), selection: Binding(
                     get: { service.pollingMinutes },
                     set: { service.updatePollingInterval($0) }
                 )) {
@@ -150,44 +168,58 @@ struct SettingsWindowContent: View {
                 }
             }
 
-            Section("Notifications") {
+            Section(L10n.text("settings.notifications", "Notifications")) {
                 if !notificationService.isAvailable {
-                    Text(notificationsUnavailableMessage)
+                    Text(notificationsUnavailableMessage())
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
 
                 ThresholdSlider(
-                    label: "Grok Bot",
+                    label: L10n.text("meter.grokBot", "Grok Bot"),
                     value: notificationService.thresholdBot,
                     onChange: { notificationService.setThresholdBot($0) }
                 )
                 ThresholdSlider(
-                    label: "Weekly pool",
+                    label: L10n.text("settings.weeklyPool", "Weekly pool"),
                     value: notificationService.thresholdWeekly,
                     onChange: { notificationService.setThresholdWeekly($0) }
                 )
             }
             .disabled(!notificationService.isAvailable)
 
-            Section("Grok Bot (Cursor)") {
-                Text("Grok Bot weekly usage is read from the Grok Bot app on this Mac. The access token stays in Grok Bot’s files. This app does not read the refresh token and does not sign you in again. If the session expires, open Grok Bot.")
+            Section(L10n.text("settings.grokBotSection", "Grok Bot (Cursor)")) {
+                Text(L10n.text(
+                    "settings.grokBotBody",
+                    "Grok Bot weekly usage is read from the Grok Bot app on this Mac. The access token stays in Grok Bot’s files. This app does not read the refresh token and does not sign you in again. If the session expires, open Grok Bot."
+                ))
                     .font(.caption)
                     .foregroundStyle(.secondary)
 
                 DisclosureGroup(isExpanded: $advancedExpanded) {
-                    Text("Optional fallback for Teams and Enterprise: a Cursor API key reads Grok Bot spend when Grok Bot is not signed in on this Mac. It is stored in the Keychain. That source is polled at most once an hour and is labeled spend, not the weekly meter.")
+                    Text(L10n.text(
+                        "settings.cursorFallback",
+                        "Optional fallback for Teams and Enterprise: a Cursor API key reads Grok Bot spend when Grok Bot is not signed in on this Mac. It is stored in the Keychain. That source is polled at most once an hour and is labeled spend, not the weekly meter."
+                    ))
                         .font(.caption)
                         .foregroundStyle(.secondary)
-                    SecureField(service.cursorConfigured ? "Cursor API key (saved)" : "Cursor API key", text: $cursorKey)
-                    TextField("Member email (optional)", text: $cursorEmail)
-                    TextField("Monthly budget in USD (optional)", text: $cursorBudget)
-                    TextField("Organization id (optional)", text: $cursorOrganizationID)
-                    Text("Leave the organization id blank to use the team spend API. The percent uses your per-user spend limit when the email matches a member. Otherwise it uses the monthly budget. The organization pool limit is not used as this bar.")
+                    SecureField(
+                        service.cursorConfigured
+                            ? L10n.text("settings.cursorKeySaved", "Cursor API key (saved)")
+                            : L10n.text("settings.cursorKey", "Cursor API key"),
+                        text: $cursorKey
+                    )
+                    TextField(L10n.text("settings.memberEmail", "Member email (optional)"), text: $cursorEmail)
+                    TextField(L10n.text("settings.budget", "Monthly budget in USD (optional)"), text: $cursorBudget)
+                    TextField(L10n.text("settings.orgId", "Organization id (optional)"), text: $cursorOrganizationID)
+                    Text(L10n.text(
+                        "settings.orgHelp",
+                        "Leave the organization id blank to use the team spend API. The percent uses your per-user spend limit when the email matches a member. Otherwise it uses the monthly budget. The organization pool limit is not used as this bar."
+                    ))
                         .font(.caption)
                         .foregroundStyle(.secondary)
                     HStack {
-                        Button("Save") {
+                        Button(L10n.text("settings.save", "Save")) {
                             service.saveCursorSettings(
                                 apiKey: cursorKey,
                                 email: cursorEmail,
@@ -199,7 +231,7 @@ struct SettingsWindowContent: View {
                                 Task { await service.fetchUsage(refreshCursor: true) }
                             }
                         }
-                        Button("Remove") {
+                        Button(L10n.text("settings.remove", "Remove")) {
                             service.clearCursorSettings()
                             cursorKey = ""
                             cursorEmail = ""
@@ -209,15 +241,15 @@ struct SettingsWindowContent: View {
                     }
                 } label: {
                     VStack(alignment: .leading, spacing: 2) {
-                        Text("Advanced")
-                        Text("Teams and Enterprise API fallback")
+                        Text(L10n.text("settings.advanced", "Advanced"))
+                        Text(L10n.text("settings.advancedSubtitle", "Teams and Enterprise API fallback"))
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
                 }
 
                 if service.cursorConfigured {
-                    Text("A Cursor API key is saved.")
+                    Text(L10n.text("settings.cursorSaved", "A Cursor API key is saved."))
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -228,41 +260,52 @@ struct SettingsWindowContent: View {
                 }
             }
 
-            Section("Grok CLI session") {
-                Text("Usage comes from the grok CLI login in ~/.grok/auth.json. This app does not collect a password or start its own sign-in.")
+            Section(L10n.text("settings.cliSection", "Grok CLI session")) {
+                Text(L10n.text(
+                    "settings.cliBody",
+                    "Usage comes from the grok CLI login in ~/.grok/auth.json. This app does not collect a password or start its own sign-in."
+                ))
                     .font(.caption)
                     .foregroundStyle(.secondary)
                 if let email = service.accountEmail {
-                    LabeledContent("Account") {
+                    LabeledContent(L10n.text("settings.account", "Account")) {
                         Text(email)
                             .textSelection(.enabled)
                     }
                 }
-                Text("To sign in or switch accounts, run grok login in Terminal.")
+                Text(L10n.text("settings.cliHint", "To sign in or switch accounts, run grok login in Terminal."))
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .textSelection(.enabled)
             }
 
-            Section("Developer API") {
-                Text("Optional. A management key and team ID read console prepaid balance and recent API spend. They do not replace the weekly pool. The key is stored in the Keychain and is not written to the config file.")
+            Section(L10n.text("settings.apiSection", "Developer API")) {
+                Text(L10n.text(
+                    "settings.apiBody",
+                    "Optional. A management key and team ID read console prepaid balance and recent API spend. They do not replace the weekly pool. The key is stored in the Keychain and is not written to the config file."
+                ))
                     .font(.caption)
                     .foregroundStyle(.secondary)
-                TextField("Team ID", text: $teamID)
-                SecureField(service.managementConfigured ? "Management key (saved)" : "Management key", text: $managementKey)
+                TextField(L10n.text("settings.teamId", "Team ID"), text: $teamID)
+                SecureField(
+                    service.managementConfigured
+                        ? L10n.text("settings.managementKeySaved", "Management key (saved)")
+                        : L10n.text("settings.managementKey", "Management key"),
+                    text: $managementKey
+                )
                 HStack {
-                    Button("Save") {
+                    Button(L10n.text("settings.save", "Save")) {
                         service.saveManagementSettings(teamID: teamID, key: managementKey)
                         managementKey = ""
                     }
-                    Button("Remove") {
+                    Button(L10n.text("settings.remove", "Remove")) {
                         service.clearManagementSettings()
                         teamID = ""
                         managementKey = ""
                     }
                 }
                 if service.managementConfigured {
-                    Text("A management key is saved for this team.")
+                    Text(L10n.text("settings.managementSaved", "A management key is saved for this team."))
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -273,16 +316,16 @@ struct SettingsWindowContent: View {
                 }
             }
 
-            Section("Updates") {
-                LabeledContent("Version") {
+            Section(L10n.text("settings.updates", "Updates")) {
+                LabeledContent(L10n.text("settings.version", "Version")) {
                     Text(Self.appVersion)
                         .textSelection(.enabled)
                 }
 
                 if appUpdater.isConfigured {
-                    Toggle("Check daily for updates", isOn: $appUpdater.automaticallyChecksForUpdates)
+                    Toggle(L10n.text("settings.checkDaily", "Check daily for updates"), isOn: $appUpdater.automaticallyChecksForUpdates)
 
-                    Button("Check for Updates…") {
+                    Button(L10n.text("settings.checkNow", "Check for Updates…")) {
                         appUpdater.checkForUpdates()
                     }
                     .disabled(!appUpdater.canCheckForUpdates)
@@ -293,7 +336,10 @@ struct SettingsWindowContent: View {
                             .foregroundStyle(.red)
                     }
                 } else {
-                    Text("This build has no update feed, so it cannot check for updates.")
+                    Text(L10n.text(
+                        "settings.noFeed",
+                        "This build has no update feed, so it cannot check for updates."
+                    ))
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -432,7 +478,7 @@ struct LaunchAtLoginToggle: View {
 
     @ViewBuilder
     private var toggle: some View {
-        let baseToggle = Toggle("Launch at Login", isOn: Binding(
+        let baseToggle = Toggle(L10n.text("settings.launch", "Launch at Login"), isOn: Binding(
             get: { model.isEnabled },
             set: { model.setEnabled($0) }
         ))
@@ -470,7 +516,10 @@ final class LaunchAtLoginModel: ObservableObject {
         isSupported = supportsLaunchAtLoginManagement(appURL: bundleURL)
 
         guard isSupported else {
-            message = "Install the app in Applications to manage launch at login."
+            message = L10n.text(
+                "settings.launchInstall",
+                "Install the app in Applications to manage launch at login."
+            )
             return
         }
 
@@ -490,7 +539,7 @@ final class LaunchAtLoginModel: ObservableObject {
             message = nil
         } catch {
             isEnabled = SMAppService.mainApp.status == .enabled
-            message = "Could not update launch at login."
+            message = L10n.text("settings.launchFailed", "Could not update launch at login.")
         }
     }
 }
@@ -534,7 +583,7 @@ private struct ThresholdSlider: View {
             )
         } label: {
             Text(label)
-            Text(value > 0 ? "\(value)%" : "Off")
+            Text(value > 0 ? "\(value)%" : L10n.text("settings.off", "Off"))
                 .foregroundStyle(.secondary)
         }
         .alignmentGuide(.firstTextBaseline) { d in
