@@ -142,13 +142,9 @@ enum BudSpeech {
     }
 
     private static func weekdayName(_ date: Date, locale: Locale, calendar: Calendar) -> String {
-        var calendar = calendar
-        calendar.locale = locale
         return date.formatted(
-            Date.FormatStyle(date: .omitted, time: .omitted)
+            JollyClock.style(locale: locale, calendar: calendar)
                 .weekday(.wide)
-                .locale(locale)
-                .timeZone(calendar.timeZone)
         )
     }
 

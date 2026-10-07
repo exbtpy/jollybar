@@ -105,15 +105,11 @@ enum UsagePaceFormat {
         if seconds <= 0 {
             return L10n.text("reset.now", "Resets now")
         }
-        var calendar = calendar
-        calendar.locale = locale
         let stamp = reset.formatted(
-            Date.FormatStyle(date: .omitted, time: .omitted)
+            JollyClock.style(locale: locale, calendar: calendar)
                 .weekday(.abbreviated)
                 .hour(.twoDigits(amPM: .omitted))
                 .minute(.twoDigits)
-                .locale(locale)
-                .timeZone(calendar.timeZone)
         )
         return L10n.format(
             "reset.line",
@@ -165,21 +161,34 @@ enum UsagePaceFormat {
         locale: Locale,
         calendar: Calendar
     ) -> String {
-        var calendar = calendar
-        calendar.locale = locale
         let day = date.formatted(
-            Date.FormatStyle(date: .omitted, time: .omitted)
+            JollyClock.style(locale: locale, calendar: calendar)
                 .weekday(.abbreviated)
-                .locale(locale)
-                .timeZone(calendar.timeZone)
         )
         let time = date.formatted(
-            Date.FormatStyle(date: .omitted, time: .shortened)
+            JollyClock.style(locale: locale, calendar: calendar, time: .shortened)
                 .hour(.defaultDigits(amPM: .abbreviated))
-                .locale(locale)
-                .timeZone(calendar.timeZone)
         )
         return "\(day) \(time)"
+    }
+}
+
+/// Builds a `Date.FormatStyle` with locale and time zone set as properties.
+/// Chaining `.timeZone(_:)` after weekday or hour symbols selects the format-symbol overload, which does not take a `TimeZone`.
+enum JollyClock {
+    static func style(
+        locale: Locale,
+        calendar: Calendar,
+        date: Date.FormatStyle.DateStyle = .omitted,
+        time: Date.FormatStyle.TimeStyle = .omitted
+    ) -> Date.FormatStyle {
+        var calendar = calendar
+        calendar.locale = locale
+        var style = Date.FormatStyle(date: date, time: time)
+        style.locale = locale
+        style.calendar = calendar
+        style.timeZone = calendar.timeZone
+        return style
     }
 }
 

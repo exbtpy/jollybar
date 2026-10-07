@@ -691,10 +691,8 @@ struct CompanionPopover<HistoryChart: View>: View {
         let height = SproutWeek.stemHeight(usagePoints: day.usagePoints, maxPoints: maxPoints)
         let tint = day.isToday ? model.mood.accent : JollyTheme.deepTeal.color.opacity(0.8)
         let symbol = day.start.formatted(
-            Date.FormatStyle(date: .omitted, time: .omitted)
+            JollyClock.style(locale: locale, calendar: calendar)
                 .weekday(.narrow)
-                .locale(locale)
-                .timeZone(calendar.timeZone)
         )
         return VStack(spacing: 3) {
             ZStack {
@@ -792,11 +790,9 @@ struct CompanionPopover<HistoryChart: View>: View {
             return L10n.text("footer.waiting", "Waiting")
         }
         let time = synced.formatted(
-            Date.FormatStyle(date: .omitted, time: .omitted)
+            JollyClock.style(locale: locale, calendar: calendar)
                 .hour(.twoDigits(amPM: .omitted))
                 .minute(.twoDigits)
-                .locale(locale)
-                .timeZone(calendar.timeZone)
         )
         return L10n.format("footer.synced", "Synced %@", locale: locale, time)
     }
@@ -919,7 +915,7 @@ private struct ConfettiBurst: View {
     }
 
     private func end(_ index: Int) -> CGSize {
-        let column = CGFloat((index % 6) - 2.5)
+        let column = CGFloat(index % 6) - 2.5
         return CGSize(width: column * 28, height: CGFloat(40 + (index * 17) % 80))
     }
 
