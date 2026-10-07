@@ -789,11 +789,7 @@ struct CompanionPopover<HistoryChart: View>: View {
         guard let synced = model.syncedAt else {
             return L10n.text("footer.waiting", "Waiting")
         }
-        let time = synced.formatted(
-            JollyClock.style(locale: locale, calendar: calendar, twentyFourHour: true)
-                .hour(.twoDigits(amPM: .omitted))
-                .minute(.twoDigits)
-        )
+        let time = JollyClock.time(synced, locale: locale, calendar: calendar)
         return L10n.format("footer.synced", "Synced %@", locale: locale, time)
     }
 }

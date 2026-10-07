@@ -105,12 +105,7 @@ enum UsagePaceFormat {
         if seconds <= 0 {
             return L10n.text("reset.now", "Resets now")
         }
-        let stamp = reset.formatted(
-            JollyClock.style(locale: locale, calendar: calendar, twentyFourHour: true)
-                .weekday(.abbreviated)
-                .hour(.twoDigits(amPM: .omitted))
-                .minute(.twoDigits)
-        )
+        let stamp = JollyClock.weekdayAndTime(reset, locale: locale, calendar: calendar)
         return L10n.format(
             "reset.line",
             "Resets %@ · in %@",
@@ -180,22 +175,33 @@ enum JollyClock {
         locale: Locale,
         calendar: Calendar,
         date: Date.FormatStyle.DateStyle = .omitted,
-        time: Date.FormatStyle.TimeStyle = .omitted,
-        twentyFourHour: Bool = false
+        time: Date.FormatStyle.TimeStyle = .omitted
     ) -> Date.FormatStyle {
         var calendar = calendar
         calendar.locale = locale
-        var locale = locale
-        if twentyFourHour {
-            // `.hour(.twoDigits(amPM: .omitted))` is a 12-hour field. The cycle
-            // keeps 18:00 as 18:00 on macOS 14, where the clock argument is unavailable.
-            locale.hourCycle = .zeroToTwentyThree
-        }
         var style = Date.FormatStyle(date: date, time: time)
         style.locale = locale
         style.calendar = calendar
         style.timeZone = calendar.timeZone
         return style
+    }
+
+    /// Weekday plus `HH:mm`. FormatStyle's two-digit hour is 12-hour when AM/PM is omitted, so 18:00 became 06:00.
+    static func weekdayAndTime(_ date: Date, locale: Locale, calendar: Calendar) -> String {
+        formatted(date, locale: locale, calendar: calendar, format: "EEE HH:mm")
+    }
+
+    static func time(_ date: Date, locale: Locale, calendar: Calendar) -> String {
+        formatted(date, locale: locale, calendar: calendar, format: "HH:mm")
+    }
+
+    private static func formatted(_ date: Date, locale: Locale, calendar: Calendar, format: String) -> String {
+        let formatter = DateFormatter()
+        formatter.locale = locale
+        formatter.calendar = calendar
+        formatter.timeZone = calendar.timeZone
+        formatter.dateFormat = format
+        return formatter.string(from: date)
     }
 }
 
