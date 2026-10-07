@@ -8,4 +8,13 @@ xcuserdata/
 dist/
 *.p12
 *.p8
+*.pem
+*.mobileprovision
+*.key
+.env
+.env.*
+!macos/identity.env
+__pycache__/
+DerivedData/
+*.xcarchive
 sparkle-private-key

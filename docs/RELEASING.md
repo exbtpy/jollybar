@@ -23,6 +23,8 @@ The tag is the version. `v1.2.3` stamps `CFBundleShortVersionString` `1.2.3`.
 
 ### GitHub Actions secrets
 
+This repository is public, so GitHub Actions minutes are free. Never commit secrets; they belong in GitHub Actions secrets.
+
 Repository → **Settings → Secrets and variables → Actions → New repository secret**.
 
 Signing (both, or neither):
@@ -91,7 +93,7 @@ The public key and the private key are a pair. The upstream Claude Usage Bar key
 https://<owner>.github.io/<repo>/appcast.xml
 ```
 
-For this repository that is `https://exbtpy.github.io/jollybar/appcast.xml`. The workflow builds that URL from the GitHub repository name, so rename the repository to `exbtpy/jollybar` before the first published release. GitHub redirects the old repository URL. Pages uses the new name, and an old Pages site does not follow that redirect. The app checks for updates only when that URL and a real public key are both in the built app. Automatic checks stay off until someone turns them on in Settings.
+For this repository that is `https://exbtpy.github.io/jollybar/appcast.xml`. The workflow builds that URL from the GitHub repository name (`exbtpy/jollybar`). The app checks for updates only when that URL and a real public key are both in the built app. Automatic checks stay off until someone turns them on in Settings.
 
 Optional: secret `SPARKLE_PUBLIC_KEY` overrides the plist value for that build. The plist is the copy that stays in git.
 
