@@ -5,6 +5,7 @@ struct JollybarApp: App {
     /// Runs before the services and `@AppStorage` read the old config, preferences, or Keychain.
     private let migrated: Bool = {
         IdentityMigration.migrateIfNeeded()
+        MenuBarStyleMigration.migrateIfNeeded()
         return true
     }()
     @StateObject private var service = UsageService()
@@ -23,11 +24,15 @@ struct JollybarApp: App {
             )
         } label: {
             MenuBarLabel(
-                theme: MenuTheme(rawValue: menuThemeRaw) ?? .companion,
+                theme: MenuTheme.resolve(menuThemeRaw),
                 mood: service.companionMood,
                 usedPercent: service.sandOwnsTopSlot
                     ? service.dashboardReading?.grokBotPercent
                     : service.cursorReading?.usedPercent,
+                usageWindowStart: UsagePace.resolvedStart(
+                    periodStart: service.sandOwnsTopSlot ? service.dashboardReading?.periodStart : nil,
+                    reset: service.sandOwnsTopSlot ? service.dashboardReading?.resetsAt : service.cursorReading?.resetsAt
+                ),
                 topFraction: service.topFraction,
                 topLabel: service.topLabel,
                 bottomFraction: service.bottomFraction,
@@ -63,28 +68,45 @@ struct MenuBarLabel: View {
     let theme: MenuTheme
     let mood: CompanionMood
     let usedPercent: Double?
+    let usageWindowStart: Date?
     let topFraction: Double?
     let topLabel: String
     let bottomFraction: Double?
     let bottomLabel: String
 
     var body: some View {
-        if theme == .companion {
-            let text = UsageNumber.menuText(usedPercent: usedPercent)
-            let tint = JollyTheme.menuTint(mood: mood, usedPercent: usedPercent)?.nsColor
-            Image(nsImage: renderCompanionStatusIcon(mood: mood, percentText: text, tint: tint))
-                .accessibilityLabel(accessibilityText(percent: text))
-        } else {
-            Image(nsImage: renderIcon(
-                topFraction: topFraction,
-                topLabel: topLabel,
-                bottomFraction: bottomFraction,
-                bottomLabel: bottomLabel,
-                theme: .classic,
-                mood: mood
-            ))
-            .accessibilityLabel(AppIdentity.displayName)
+        switch theme {
+        case .percent:
+            percentItem
+        case .bars:
+            barsItem
+        case .companion:
+            MenuBarCompanionItem(
+                mood: mood,
+                usedPercent: usedPercent,
+                usageWindowStart: usageWindowStart
+            )
         }
+    }
+
+    private var percentItem: some View {
+        let text = UsageNumber.menuText(usedPercent: usedPercent)
+        let tint = JollyTheme.menuTint(mood: mood, usedPercent: usedPercent)?.nsColor
+        return Image(nsImage: renderCompanionStatusIcon(mood: mood, percentText: text, tint: tint))
+            .accessibilityLabel(accessibilityText(percent: text))
+    }
+
+    private var barsItem: some View {
+        let tint = JollyTheme.menuTint(mood: mood, usedPercent: usedPercent)?.nsColor
+        return Image(nsImage: renderIcon(
+            topFraction: topFraction,
+            topLabel: topLabel,
+            bottomFraction: bottomFraction,
+            bottomLabel: bottomLabel,
+            mouthFraction: MenuBarMouth.fraction(usedPercent: usedPercent),
+            tint: tint
+        ))
+        .accessibilityLabel(AppIdentity.displayName)
     }
 
     private func accessibilityText(percent: String) -> String {

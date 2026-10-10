@@ -296,6 +296,156 @@ final class JollyThemeTests: XCTestCase {
         XCTAssertLessThanOrEqual(low.size.height, 18)
     }
 
+    func testMenuThemeResolvesTheStoredStyle() {
+        XCTAssertEqual(MenuTheme.resolve(nil), .percent)
+        XCTAssertEqual(MenuTheme.resolve("percent"), .percent)
+        XCTAssertEqual(MenuTheme.resolve("bars"), .bars)
+        XCTAssertEqual(MenuTheme.resolve("classic"), .bars)
+        XCTAssertEqual(MenuTheme.resolve("companion"), .companion)
+        XCTAssertEqual(MenuTheme.resolve("nope"), .percent)
+        XCTAssertTrue(MenuTheme.percent.showsCompanionPopover)
+        XCTAssertTrue(MenuTheme.companion.showsCompanionPopover)
+        XCTAssertFalse(MenuTheme.bars.showsCompanionPopover)
+    }
+
+    func testMenuBarStyleMigrationRewritesOldValuesOnce() {
+        let name = "menu-style-\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: name)!
+        defer { defaults.removePersistentDomain(forName: name) }
+
+        defaults.set("classic", forKey: MenuTheme.defaultsKey)
+        MenuBarStyleMigration.migrateIfNeeded(defaults: defaults)
+        XCTAssertEqual(defaults.string(forKey: MenuTheme.defaultsKey), MenuTheme.bars.rawValue)
+        XCTAssertTrue(defaults.bool(forKey: MenuBarStyleMigration.marker))
+
+        defaults.set(MenuTheme.companion.rawValue, forKey: MenuTheme.defaultsKey)
+        MenuBarStyleMigration.migrateIfNeeded(defaults: defaults)
+        XCTAssertEqual(defaults.string(forKey: MenuTheme.defaultsKey), MenuTheme.companion.rawValue)
+    }
+
+    func testMenuBarStyleMigrationMapsTheOldCompanionItemToPercent() {
+        let name = "menu-style-\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: name)!
+        defer { defaults.removePersistentDomain(forName: name) }
+
+        defaults.set(MenuTheme.companion.rawValue, forKey: MenuTheme.defaultsKey)
+        MenuBarStyleMigration.migrateIfNeeded(defaults: defaults)
+        XCTAssertEqual(defaults.string(forKey: MenuTheme.defaultsKey), MenuTheme.percent.rawValue)
+
+        defaults.removeObject(forKey: MenuBarStyleMigration.marker)
+        defaults.removeObject(forKey: MenuTheme.defaultsKey)
+        MenuBarStyleMigration.migrateIfNeeded(defaults: defaults)
+        XCTAssertNil(defaults.string(forKey: MenuTheme.defaultsKey))
+        XCTAssertTrue(defaults.bool(forKey: MenuBarStyleMigration.marker))
+    }
+
+    func testUsageBarsStayAFixedTemplateUntilTheMoodTint() {
+        let quiet = renderIcon(
+            topFraction: 0.2,
+            topLabel: "GB",
+            bottomFraction: nil,
+            bottomLabel: "CM",
+            mouthFraction: 0.2,
+            tint: nil
+        )
+        let loud = renderIcon(
+            topFraction: 1,
+            topLabel: "Sp",
+            bottomFraction: 0.4,
+            bottomLabel: "Wk",
+            mouthFraction: 1,
+            tint: JollyTheme.asleep.nsColor
+        )
+        XCTAssertEqual(quiet.size, loud.size)
+        XCTAssertEqual(quiet.size.height, 18)
+        XCTAssertEqual(quiet.isTemplate, true)
+        XCTAssertEqual(loud.isTemplate, false)
+    }
+
+    func testCompanionMenuIconIsNotATemplate() {
+        let icon = renderCompanionMenuIcon(mood: .playful, mouthFraction: 0.2, frame: .rest)
+        XCTAssertFalse(icon.isTemplate)
+        XCTAssertGreaterThanOrEqual(icon.size.height, 16)
+        XCTAssertLessThanOrEqual(icon.size.height, 18)
+        let asleep = renderCompanionMenuIcon(mood: .asleep, mouthFraction: 1, frame: .rest)
+        XCTAssertEqual(icon.size, asleep.size)
+    }
+
+    func testCompanionMenuMotionBlinksInsideABreath() {
+        let (early, earlyOn) = CompanionMenuMotion.frame(
+            breatheElapsed: 0.1,
+            wiggleElapsed: nil,
+            celebrateElapsed: nil
+        )
+        XCTAssertTrue(earlyOn)
+        XCTAssertEqual(early.eyeOpen, 1)
+        XCTAssertGreaterThan(early.breathe, 0)
+
+        let (blink, blinkOn) = CompanionMenuMotion.frame(
+            breatheElapsed: 0.66,
+            wiggleElapsed: nil,
+            celebrateElapsed: nil
+        )
+        XCTAssertTrue(blinkOn)
+        XCTAssertLessThan(blink.eyeOpen, 0.2)
+
+        let (done, doneOn) = CompanionMenuMotion.frame(
+            breatheElapsed: CompanionMenuMotion.breatheDuration,
+            wiggleElapsed: nil,
+            celebrateElapsed: nil
+        )
+        XCTAssertFalse(doneOn)
+        XCTAssertEqual(done, .rest)
+    }
+
+    func testCompanionMenuMotionWigglesAndCelebrates() {
+        let (wiggle, wiggling) = CompanionMenuMotion.frame(
+            breatheElapsed: nil,
+            wiggleElapsed: 0.05,
+            celebrateElapsed: nil
+        )
+        XCTAssertTrue(wiggling)
+        XCTAssertNotEqual(wiggle.wiggle, 0)
+
+        let (hop, hopping) = CompanionMenuMotion.frame(
+            breatheElapsed: nil,
+            wiggleElapsed: nil,
+            celebrateElapsed: CompanionMenuMotion.celebrateDuration / 2
+        )
+        XCTAssertTrue(hopping)
+        XCTAssertGreaterThan(hop.celebrate, 0.5)
+
+        let (idle, idling) = CompanionMenuMotion.frame(
+            breatheElapsed: nil,
+            wiggleElapsed: nil,
+            celebrateElapsed: nil
+        )
+        XCTAssertFalse(idling)
+        XCTAssertEqual(idle, .rest)
+    }
+
+    func testMenuBarCelebrationUsesItsOwnKeysAndSkipsWhenStill() {
+        let name = "menu-celebrate-\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: name)!
+        defer { defaults.removePersistentDomain(forName: name) }
+        let previous = Date(timeIntervalSince1970: 1_700_000_000)
+        let current = previous.addingTimeInterval(7 * 24 * 60 * 60)
+        defaults.set(previous.timeIntervalSince1970, forKey: CompanionMenuMotion.seenWindowKey)
+
+        XCTAssertFalse(CompanionMenuMotion.claimCelebration(
+            currentWindowStart: current,
+            allowsMotion: false,
+            defaults: defaults
+        ))
+        XCTAssertEqual(defaults.double(forKey: CompanionMenuMotion.celebratedWindowKey), current.timeIntervalSince1970)
+
+        XCTAssertFalse(CompanionMenuMotion.claimCelebration(
+            currentWindowStart: current,
+            allowsMotion: true,
+            defaults: defaults
+        ))
+    }
+
     private func assertColor(_ rgb: JollyTheme.RGB, _ red: Int, _ green: Int, _ blue: Int, file: StaticString = #filePath, line: UInt = #line) {
         XCTAssertEqual(rgb.red, Double(red) / 255, accuracy: 0.001, file: file, line: line)
         XCTAssertEqual(rgb.green, Double(green) / 255, accuracy: 0.001, file: file, line: line)

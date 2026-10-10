@@ -9,7 +9,7 @@ APP_EXECUTABLE_NAME := $(shell bash -c 'source "$(IDENTITY)" && printf %s "$$APP
 DMG_NAME := $(shell bash -c 'source "$(IDENTITY)" && printf %s "$$DMG_NAME"')
 CONFIG_DIR_NAME := $(shell bash -c 'source "$(IDENTITY)" && printf %s "$$CONFIG_DIR_NAME"')
 
-.PHONY: build app zip dmg release-artifacts verify-release install clean print-identity
+.PHONY: build app zip dmg release-artifacts verify-release install clean print-identity icon
 
 print-identity:
 	@echo "APP_PRODUCT_NAME=$(APP_PRODUCT_NAME)"
@@ -18,6 +18,11 @@ print-identity:
 	@echo "APP_EXECUTABLE_NAME=$(APP_EXECUTABLE_NAME)"
 	@echo "DMG_NAME=$(DMG_NAME)"
 	@echo "CONFIG_DIR_NAME=$(CONFIG_DIR_NAME)"
+
+# Regenerates AppIcon.icns, the asset catalog, and docs/images from design/logo.
+# Requires cairosvg. make app uses the committed icons and does not run this.
+icon:
+	python3 design/logo/render_icon.py
 
 build:
 	cd macos && swift build -c release

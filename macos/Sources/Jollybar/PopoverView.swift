@@ -11,7 +11,7 @@ struct PopoverView: View {
     @Environment(\.colorScheme) private var colorScheme
 
     private var theme: MenuTheme {
-        MenuTheme(rawValue: menuThemeRaw) ?? .companion
+        MenuTheme.resolve(menuThemeRaw)
     }
 
     var body: some View {
@@ -22,9 +22,9 @@ struct PopoverView: View {
                 onComplete: { setupComplete = true }
             )
             .padding()
-            .frame(width: theme == .companion ? 320 : 360)
-            .background(theme == .companion ? JollyTheme.background(colorScheme) : Color.clear)
-        } else if theme == .companion {
+            .frame(width: theme.showsCompanionPopover ? 320 : 360)
+            .background(theme.showsCompanionPopover ? JollyTheme.background(colorScheme) : Color.clear)
+        } else if theme.showsCompanionPopover {
             CompanionScreen(
                 service: service,
                 historyService: historyService,

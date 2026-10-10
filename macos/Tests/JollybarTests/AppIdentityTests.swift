@@ -55,6 +55,7 @@ final class AppIdentityTests: XCTestCase {
         }
         XCTAssertEqual(AppIdentity.companionName, "Bud")
         XCTAssertEqual(MenuTheme.companion.rawValue, "companion")
+        XCTAssertEqual(MenuTheme.defaultTheme, .percent)
     }
 
     /// `#filePath` is `<repo>/macos/Tests/JollybarTests/<file>.swift`.

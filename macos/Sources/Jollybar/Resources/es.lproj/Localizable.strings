@@ -68,9 +68,12 @@
 "percent.used" = "Usado";
 "percent.left" = "Restante";
 
+"settings.appearance" = "Apariencia";
 "settings.menuBar" = "Barra de menú";
-"settings.classic" = "Clásico";
-"settings.menuBarHelp" = "Clásico conserva las dos barras y el ícono de la gráfica. Bud es la carita de la barra de menú y el medidor semanal. La animación solo corre mientras el menú está abierto.";
+"settings.menuPercent" = "Porcentaje";
+"settings.menuBars" = "Barras de uso";
+"settings.menuCompanion" = "Compañero";
+"settings.menuBarHelp" = "Porcentaje muestra la carita y cuánto de la semana se usó. Barras de uso muestra la carita y los dos medidores. Compañero muestra un Bud pequeño y una barra mínima. Bud parpadea y respira, y se queda quieto con Reducir movimiento o el modo de bajo consumo.";
 "settings.number" = "Número grande";
 "settings.numberHelp" = "El número grande muestra cuánto de la semana se usó, o cuánto queda. La barra de menú siempre muestra lo usado, para que el color signifique lo mismo.";
 "settings.off" = "Apagado";

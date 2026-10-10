@@ -68,9 +68,12 @@
 "percent.used" = "Used";
 "percent.left" = "Left";
 
+"settings.appearance" = "Appearance";
 "settings.menuBar" = "Menu bar";
-"settings.classic" = "Classic";
-"settings.menuBarHelp" = "Classic keeps the two bars and a chart glyph. Bud is the menu-bar face and the weekly meter. The animation runs only while the menu is open.";
+"settings.menuPercent" = "Percent";
+"settings.menuBars" = "Usage bars";
+"settings.menuCompanion" = "Companion";
+"settings.menuBarHelp" = "Percent shows the face and how much of the week is used. Usage bars shows the face and the two meters. Companion shows a small Bud and a tiny bar. Bud blinks and breathes, and stays still when Reduce Motion or Low Power Mode is on.";
 "settings.number" = "Big number";
 "settings.numberHelp" = "The big number shows how much of the week is used, or how much is left. The menu bar always shows used, so the color still means the same thing.";
 "settings.off" = "Off";

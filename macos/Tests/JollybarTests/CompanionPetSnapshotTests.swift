@@ -76,6 +76,14 @@ final class CompanionPetSnapshotTests: XCTestCase {
             try png.write(to: directory.appendingPathComponent("menubar-samples.png"))
             wrote += 1
         }
+        if let styles = menuStyles(), let png = menuPNG(styles, pad: 12) {
+            try png.write(to: directory.appendingPathComponent("menubar-styles.png"))
+            wrote += 1
+        }
+        if let preview = iconPreview(), let png = pngData(from: preview, scale: 1), png.count > 1000 {
+            try png.write(to: directory.appendingPathComponent("icon-preview.png"))
+            wrote += 1
+        }
 
         let popovers = try FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil)
             .filter { $0.lastPathComponent.hasPrefix("popover-") && $0.pathExtension == "png" }
@@ -207,6 +215,130 @@ final class CompanionPetSnapshotTests: XCTestCase {
             }
             return true
         }
+    }
+
+    /// Percent, usage bars, and companion at 20 / 70 / 92 / 100.
+    /// Companion uses the rest frame so the snapshot does not depend on the timer.
+    private func menuStyles() -> NSImage? {
+        let samples: [(Double, CompanionMood, String)] = [
+            (20, .playful, "20%"),
+            (70, .steady, "70%"),
+            (92, .worried, "92%"),
+            (100, .asleep, "100%"),
+        ]
+        let titles = ["Percent", "Usage bars", "Companion"]
+        var rows: [(String, [NSImage])] = []
+        for (percent, mood, label) in samples {
+            let tint = JollyTheme.menuTint(mood: mood, usedPercent: percent)?.nsColor
+            let text = UsageNumber.menuText(usedPercent: percent)
+            let mouth = MenuBarMouth.fraction(usedPercent: percent)
+            let bottom = min(1, (percent / 100) * 0.4)
+            rows.append((label, [
+                renderCompanionStatusIcon(mood: mood, percentText: text, tint: tint),
+                renderIcon(
+                    topFraction: percent / 100,
+                    topLabel: "GB",
+                    bottomFraction: bottom,
+                    bottomLabel: "CM",
+                    mouthFraction: mouth,
+                    tint: tint
+                ),
+                renderCompanionMenuIcon(mood: mood, mouthFraction: mouth, frame: .rest)
+            ]))
+        }
+
+        let gapX: CGFloat = 22
+        let gapY: CGFloat = 16
+        let headerHeight: CGFloat = 14
+        let labelWidth: CGFloat = 40
+        let colWidths = (0..<3).map { column in
+            rows.map { $0.1[column].size.width }.max() ?? 0
+        }
+        let rowHeight = rows.flatMap { $0.1 }.map(\.size.height).max() ?? 18
+        let width = labelWidth + colWidths.reduce(0, +) + gapX * CGFloat(max(0, colWidths.count - 1))
+        let height = headerHeight + gapY + rowHeight * CGFloat(rows.count) + gapY * CGFloat(rows.count - 1)
+        let headerFont = NSFont.systemFont(ofSize: 9, weight: .semibold)
+        let labelFont = NSFont.monospacedDigitSystemFont(ofSize: 9, weight: .medium)
+        let ink = NSColor(srgbRed: 0x0E / 255.0, green: 0x14 / 255.0, blue: 0x16 / 255.0, alpha: 1)
+
+        return NSImage(size: NSSize(width: width, height: height), flipped: true) { _ in
+            var x = labelWidth
+            for (index, title) in titles.enumerated() {
+                let string = NSAttributedString(string: title, attributes: [
+                    .font: headerFont,
+                    .foregroundColor: ink
+                ])
+                string.draw(at: NSPoint(x: x, y: 0))
+                x += colWidths[index] + gapX
+            }
+            for (rowIndex, row) in rows.enumerated() {
+                let y = headerHeight + gapY + CGFloat(rowIndex) * (rowHeight + gapY)
+                let label = NSAttributedString(string: row.0, attributes: [
+                    .font: labelFont,
+                    .foregroundColor: ink
+                ])
+                label.draw(at: NSPoint(x: 0, y: y + (rowHeight - label.size().height) / 2))
+                var columnX = labelWidth
+                for (index, image) in row.1.enumerated() {
+                    let imageY = y + (rowHeight - image.size.height) / 2
+                    image.draw(in: CGRect(x: columnX, y: imageY, width: image.size.width, height: image.size.height))
+                    columnX += colWidths[index] + gapX
+                }
+            }
+            return true
+        }
+    }
+
+    /// 1024 asset plus a nearest-neighbor enlargement of the 32px asset, and the 32px asset itself.
+    private func iconPreview() -> NSImage? {
+        let iconset = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .appendingPathComponent("macos/Resources/Assets.xcassets/AppIcon.appiconset")
+        guard
+            let large = bitmap(at: iconset.appendingPathComponent("icon_512x512@2x.png")),
+            let small = bitmap(at: iconset.appendingPathComponent("icon_32x32.png")),
+            large.pixelsWide == 1024,
+            large.pixelsHigh == 1024,
+            small.pixelsWide == 32,
+            small.pixelsHigh == 32
+        else {
+            return nil
+        }
+
+        large.size = NSSize(width: 1024, height: 1024)
+        small.size = NSSize(width: 32, height: 32)
+        let largeImage = NSImage(size: large.size)
+        largeImage.addRepresentation(large)
+        let smallImage = NSImage(size: small.size)
+        smallImage.addRepresentation(small)
+
+        let pad: CGFloat = 32
+        let gap: CGFloat = 32
+        let enlarged: CGFloat = 256
+        let width = pad + 1024 + gap + enlarged + gap + 32 + pad
+        let height = pad + 1024 + pad
+        let paper = NSColor(srgbRed: 0xF3 / 255.0, green: 0xEE / 255.0, blue: 0xE4 / 255.0, alpha: 1)
+        return NSImage(size: NSSize(width: width, height: height), flipped: false) { bounds in
+            paper.setFill()
+            bounds.fill()
+            largeImage.draw(in: CGRect(x: pad, y: pad, width: 1024, height: 1024))
+            NSGraphicsContext.current?.imageInterpolation = .none
+            let enlargedY = pad + (1024 - enlarged) / 2
+            smallImage.draw(in: CGRect(x: pad + 1024 + gap, y: enlargedY, width: enlarged, height: enlarged))
+            let nativeY = pad + (1024 - 32) / 2
+            smallImage.draw(
+                in: CGRect(x: pad + 1024 + gap + enlarged + gap, y: nativeY, width: 32, height: 32)
+            )
+            return true
+        }
+    }
+
+    private func bitmap(at url: URL) -> NSBitmapImageRep? {
+        guard let data = try? Data(contentsOf: url) else { return nil }
+        return NSBitmapImageRep(data: data)
     }
 
     private func menuPNG(_ image: NSImage, pad: CGFloat = 6) -> Data? {

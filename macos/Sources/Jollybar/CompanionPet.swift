@@ -102,12 +102,53 @@ struct CompanionMouth: Shape {
     }
 }
 
-enum MenuTheme: String {
-    case classic
+enum MenuTheme: String, CaseIterable, Identifiable {
+    case percent
+    case bars
     case companion
 
+    var id: String { rawValue }
+
     static let defaultsKey = "menuTheme"
-    static let defaultTheme = MenuTheme.companion
+    static let defaultTheme = MenuTheme.percent
+
+    /// `classic` is the pre-redesign stacked meters. A stored `companion` from
+    /// before this picker meant the face-and-percent item, which is now `percent`.
+    static func resolve(_ stored: String?) -> MenuTheme {
+        switch stored {
+        case Self.bars.rawValue, "classic":
+            return .bars
+        case Self.companion.rawValue:
+            return .companion
+        default:
+            return .percent
+        }
+    }
+
+    /// Percent and Companion keep the Bud popover. Usage bars keeps the meter popover.
+    var showsCompanionPopover: Bool { self != .bars }
+}
+
+/// One-shot rewrite of the old menu-bar values. Runs after identity migration
+/// and before `@AppStorage` reads `menuTheme`. The marker stays set so a later
+/// choice of Companion is not rewritten back to Percent.
+enum MenuBarStyleMigration {
+    static let marker = "menuBarStyleV2"
+
+    static func migrateIfNeeded(defaults: UserDefaults = .standard) {
+        if defaults.bool(forKey: marker) { return }
+        if let stored = defaults.string(forKey: MenuTheme.defaultsKey) {
+            switch stored {
+            case "classic":
+                defaults.set(MenuTheme.bars.rawValue, forKey: MenuTheme.defaultsKey)
+            case MenuTheme.companion.rawValue:
+                defaults.set(MenuTheme.percent.rawValue, forKey: MenuTheme.defaultsKey)
+            default:
+                break
+            }
+        }
+        defaults.set(true, forKey: marker)
+    }
 }
 
 /// Pointed leaf from the sprout on Bud's head. Also the pace marker.

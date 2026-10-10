@@ -8,7 +8,9 @@ This is a fork of [Blimp-Labs/claude-usage-bar](https://github.com/Blimp-Labs/cl
 
 The Grok Bot session reader is adapted from [grokbot-meter](https://github.com/nuno/grokbot-meter) (MIT, Copyright (c) 2026 Nuno Costa). SuperGrok category names follow [Grok-Rate-Limit-Display](https://github.com/blankspeaker/Grok-Rate-Limit-Display) (MIT, Copyright (c) 2026 blankspeaker). Both notices are in `LICENSE`.
 
-The menu bar shows two short meters, in the same stacked layout as the original Claude Usage Bar. The top bar is **GB** (Grok Bot weekly usage from the Grok Bot app on this Mac). The bottom bar is **Wk** (SuperGrok) only when the signed-in grok.com account has a weekly pool. Otherwise the bottom bar is **CM** (Cursor Models). Other Models and on-demand spend sit in Details. Settings can switch the menu bar between Classic (chart glyph) and Bud (a pet that follows Grok Bot weekly usage). Bud's animation runs only while the popover is open. Each source fails on its own: a grok.com error does not clear Grok Bot, and the other way around.
+![Jollybar](docs/images/wordmark.png)
+
+The menu bar defaults to the face and the percent of the week that is used. Settings, under Appearance, can switch it to the original stacked meters or to a small Bud with a tiny bar. The top meter is **GB** (Grok Bot weekly usage from the Grok Bot app on this Mac) or **Sp** (spend). The bottom meter is **Wk** (SuperGrok) only when the signed-in grok.com account has a weekly pool. Otherwise the bottom meter is **CM** (Cursor Models). The face and the meters take the mood color from 70% used. Bud blinks and breathes, and stays still when Reduce Motion or Low Power Mode is on. Other Models and on-demand spend sit in Details. Each source fails on its own: a grok.com error does not clear Grok Bot, and the other way around.
 
 ## Build
 
