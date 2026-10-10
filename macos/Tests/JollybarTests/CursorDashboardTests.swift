@@ -149,6 +149,11 @@ final class CursorDashboardTests: XCTestCase {
         XCTAssertGreaterThan(MouthCurve.softSmile.depth, 0.5)
         XCTAssertEqual(MouthCurve.flat.depth, 0.5)
         XCTAssertLessThan(MouthCurve.frown.depth, 0.5)
+        // Left brow counterclockwise lifts its inner end. The mirror does the same on the right.
+        XCTAssertLessThan(BudBrows.degrees(mirrored: false), 0)
+        XCTAssertGreaterThan(BudBrows.degrees(mirrored: true), 0)
+        XCTAssertEqual(BudBrows.degrees(mirrored: false), -BudBrows.degrees(mirrored: true))
+        XCTAssertGreaterThan(BudBrows.lift, 9)
     }
 
     func testChartOmitsWeeklyWhenThereIsNoPoolAndDrawsTheFirstSamples() {

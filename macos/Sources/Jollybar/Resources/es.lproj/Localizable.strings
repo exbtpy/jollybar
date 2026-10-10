@@ -29,7 +29,9 @@
 "speech.asleep.1" = "Me echo una siesta hasta la siguiente ventana.";
 "speech.asleep.2" = "En pausa, llegamos al límite.";
 
-"pace.ahead" = "%d%% arriba del ritmo · se acaba ~%@";
+"pace.ahead" = "Vas %d%% más rápido que el ritmo · se acaba ~%@";
+"pace.faster" = "Vas %d%% más rápido que el ritmo";
+"pace.behind" = "Por debajo del ritmo, te sobra %d%%";
 "pace.lasts" = "A este ritmo alcanza hasta el reinicio";
 "pace.atLimit" = "En el límite hasta el reinicio";
 "reset.line" = "Se reinicia %@ · en %@";

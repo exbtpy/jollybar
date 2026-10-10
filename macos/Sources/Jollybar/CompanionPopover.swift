@@ -385,7 +385,7 @@ struct CompanionPopover<HistoryChart: View>: View {
     private func stage(speech: String) -> some View {
         ZStack(alignment: .top) {
             VStack(spacing: 4) {
-                BudStage(mood: model.mood, motionEnabled: motionEnabled)
+                BudStage(mood: model.mood, motionEnabled: motionEnabled, locale: locale)
                     .padding(.top, 26)
                 Text(speech)
                     .font(JollyType.rounded(13, weight: .medium))
@@ -414,7 +414,7 @@ struct CompanionPopover<HistoryChart: View>: View {
                         .frame(width: 22, height: 22)
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel(L10n.text("footer.settings", "Settings"))
+                .accessibilityLabel(localized("footer.settings", "Settings"))
             }
             .padding(.horizontal, 10)
             .padding(.top, 8)
@@ -459,7 +459,7 @@ struct CompanionPopover<HistoryChart: View>: View {
                     .minimumScaleFactor(0.7)
                     .lineLimit(1)
                 Spacer(minLength: 4)
-                Text(model.percentStyle.settingsTitle)
+                Text(model.percentStyle.title(locale: locale))
                     .font(JollyType.label(10))
                     .textCase(.uppercase)
                     .tracking(0.6)
@@ -532,7 +532,7 @@ struct CompanionPopover<HistoryChart: View>: View {
                 }
             }
             .frame(height: 16)
-            .accessibilityLabel(L10n.text("meter.pace", "Weekly pace"))
+            .accessibilityLabel(localized("meter.pace", "Weekly pace"))
     }
 
     private var heroBackground: some View {
@@ -550,31 +550,31 @@ struct CompanionPopover<HistoryChart: View>: View {
 
     private var modelsCard: some View {
         VStack(alignment: .leading, spacing: 7) {
-            Text(L10n.text("meter.cursorModels", "Cursor Models"))
+            Text(localized("meter.cursorModels", "Cursor Models"))
                 .font(JollyType.label(10))
                 .textCase(.uppercase)
                 .tracking(0.8)
                 .foregroundStyle(JollyTheme.secondaryText(scheme))
             thinMeter(
-                title: L10n.text("meter.cursorModelsShort", "Cursor models"),
+                title: localized("meter.cursorModelsShort", "Cursor models"),
                 percent: model.cursorModelsPercent,
                 tint: JollyTheme.teal.color
             )
             thinMeter(
-                title: L10n.text("meter.otherModels", "Other models"),
+                title: localized("meter.otherModels", "Other models"),
                 percent: model.otherModelsPercent,
                 tint: JollyTheme.deepTeal.color
             )
             if let superGrok = model.superGrokPercent {
                 thinMeter(
-                    title: L10n.text("meter.superGrok", "SuperGrok"),
+                    title: localized("meter.superGrok", "SuperGrok"),
                     percent: superGrok,
                     tint: JollyTheme.steady.color
                 )
             }
             if let onDemand = model.onDemandText {
                 HStack {
-                    Text(L10n.text("meter.onDemand", "On-demand"))
+                    Text(localized("meter.onDemand", "On-demand"))
                         .font(JollyType.label(10))
                         .textCase(.uppercase)
                         .tracking(0.5)
@@ -630,7 +630,7 @@ struct CompanionPopover<HistoryChart: View>: View {
     private var weekCard: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
-                Text(L10n.text("week.title", "The week"))
+                Text(localized("week.title", "The week"))
                     .font(JollyType.label(10))
                     .textCase(.uppercase)
                     .tracking(0.8)
@@ -651,8 +651,8 @@ struct CompanionPopover<HistoryChart: View>: View {
 
     private var chartToggle: some View {
         HStack(spacing: 2) {
-            toggleChip(.sprout, title: L10n.text("week.sprout", "Week"))
-            toggleChip(.history, title: L10n.text("week.history", "History"))
+            toggleChip(.sprout, title: localized("week.sprout", "Week"))
+            toggleChip(.history, title: localized("week.history", "History"))
         }
         .padding(2)
         .background(Capsule().fill(JollyTheme.track(scheme)))
@@ -755,7 +755,7 @@ struct CompanionPopover<HistoryChart: View>: View {
             }
             .padding(.top, 6)
         } label: {
-            Text(L10n.text("section.more", "More"))
+            Text(localized("section.more", "More"))
                 .font(JollyType.label(10))
                 .textCase(.uppercase)
                 .tracking(0.7)
@@ -770,11 +770,11 @@ struct CompanionPopover<HistoryChart: View>: View {
                 .lineLimit(1)
                 .minimumScaleFactor(0.75)
             Spacer(minLength: 6)
-            Button(L10n.text("footer.refresh", "Refresh")) {
+            Button(localized("footer.refresh", "Refresh")) {
                 onRefresh()
             }
             .buttonStyle(.plain)
-            Button(L10n.text("footer.quit", "Quit")) {
+            Button(localized("footer.quit", "Quit")) {
                 NSApplication.shared.terminate(nil)
             }
             .buttonStyle(.plain)
@@ -787,16 +787,21 @@ struct CompanionPopover<HistoryChart: View>: View {
 
     private var syncedLabel: String {
         guard let synced = model.syncedAt else {
-            return L10n.text("footer.waiting", "Waiting")
+            return localized("footer.waiting", "Waiting")
         }
         let time = JollyClock.time(synced, locale: locale, calendar: calendar)
         return L10n.format("footer.synced", "Synced %@", locale: locale, time)
+    }
+
+    private func localized(_ key: String, _ fallback: String) -> String {
+        L10n.text(key, fallback, locale: locale)
     }
 }
 
 private struct BudStage: View {
     var mood: CompanionMood
     var motionEnabled: Bool
+    var locale: Locale
     @State private var squish = false
     @State private var reaction: CGFloat = 1
     @State private var heartsVisible = false
@@ -825,7 +830,7 @@ private struct BudStage: View {
         .onChange(of: mood) { _, _ in react() }
         .accessibilityAddTraits(.isButton)
         .accessibilityLabel(mood.accessibilityLabel)
-        .accessibilityHint(L10n.text("bud.poke", "Poke Bud"))
+        .accessibilityHint(L10n.text("bud.poke", "Poke Bud", locale: locale))
     }
 
     private var hearts: some View {

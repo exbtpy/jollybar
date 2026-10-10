@@ -41,6 +41,16 @@ final class CompanionPetSnapshotTests: XCTestCase {
             try png.write(to: directory.appendingPathComponent("popover-playful-light.png"))
             wrote += 1
         }
+        let spanish = popover(
+            mood: .worried,
+            usedPercent: 93,
+            scheme: .dark,
+            locale: Locale(identifier: "es_MX")
+        )
+        if let png = png(of: spanish, width: 320) {
+            try png.write(to: directory.appendingPathComponent("popover-worried-es.png"))
+            wrote += 1
+        }
 
         let samples: [(Double, CompanionMood, String)] = [
             (20, .playful, "menubar-20"),
@@ -72,15 +82,22 @@ final class CompanionPetSnapshotTests: XCTestCase {
         if wrote == 0 {
             throw XCTSkip("ImageRenderer did not produce an image in this environment")
         }
-        XCTAssertEqual(popovers.count, 6, "Expected a dark popover for each mood and one light popover")
+        XCTAssertEqual(popovers.count, 7, "Expected a dark popover for each mood, one light popover, and one Spanish popover")
     }
 
-    private func popover(mood: CompanionMood, usedPercent: Double, scheme: ColorScheme) -> some View {
+    private func popover(
+        mood: CompanionMood,
+        usedPercent: Double,
+        scheme: ColorScheme,
+        locale: Locale = Locale(identifier: "en_US")
+    ) -> some View {
+        var calendar = utcCalendar
+        calendar.locale = locale
         let popover = CompanionPopover(
-            model: model(mood: mood, usedPercent: usedPercent),
+            model: model(mood: mood, usedPercent: usedPercent, locale: locale),
             frozenNow: now,
-            locale: Locale(identifier: "en_US"),
-            calendar: utcCalendar,
+            locale: locale,
+            calendar: calendar,
             motionEnabled: false,
             celebrate: false,
             onCelebrationFinished: {},
@@ -89,14 +106,15 @@ final class CompanionPetSnapshotTests: XCTestCase {
             historyChart: { EmptyView() }
         )
         .environment(\.colorScheme, scheme)
-        .environment(\.locale, Locale(identifier: "en_US"))
+        .environment(\.locale, locale)
         return popover
     }
 
-    private func model(mood: CompanionMood, usedPercent: Double) -> CompanionPopoverModel {
-        CompanionPopoverModel(
+    private func model(mood: CompanionMood, usedPercent: Double, locale: Locale = Locale(identifier: "en_US")) -> CompanionPopoverModel {
+        let spanish = locale.identifier.hasPrefix("es")
+        return CompanionPopoverModel(
             mood: mood,
-            planTitle: "Weekly",
+            planTitle: spanish ? "Semanal" : "Weekly",
             heroTitle: "Grok Bot",
             usedPercent: usedPercent,
             percentStyle: .used,

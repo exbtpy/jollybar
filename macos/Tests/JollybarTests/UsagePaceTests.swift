@@ -96,7 +96,7 @@ final class UsagePaceTests: XCTestCase {
     func testAheadLineNamesTheRunOutAndTheQuietLineDoesNot() {
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = TimeZone(secondsFromGMT: 0)!
-        let runsOut = Date(timeIntervalSince1970: 1_700_000_000)
+        let runsOut = Date(timeIntervalSince1970: 1_700_000_000) // 2023-11-14 22:13:20 UTC
         let ahead = UsagePace.Forecast(elapsedFraction: 0.5, aheadPoints: 12, runsOutAt: runsOut)
         let line = UsagePaceFormat.paceLine(
             forecast: ahead,
@@ -104,14 +104,100 @@ final class UsagePaceTests: XCTestCase {
             locale: Locale(identifier: "en_US"),
             calendar: calendar
         )
-        XCTAssertTrue(line.contains("12%"))
-        XCTAssertTrue(line.contains("ahead of pace"))
-        XCTAssertTrue(line.contains("runs out"))
+        XCTAssertEqual(line, "Using 12% faster than pace · runs out ~Tue 22:13")
+        XCTAssertFalse(line.contains("ahead of pace"))
+        XCTAssertFalse(line.contains("PM"))
 
         let quiet = UsagePace.Forecast(elapsedFraction: 0.5, aheadPoints: -4, runsOutAt: nil)
         XCTAssertEqual(
             UsagePaceFormat.paceLine(forecast: quiet, usedPercent: 40, locale: Locale(identifier: "en_US"), calendar: calendar),
             "On pace to last until reset"
+        )
+        XCTAssertEqual(
+            UsagePaceFormat.paceLine(forecast: quiet, usedPercent: 40, locale: Locale(identifier: "es_MX"), calendar: calendar),
+            "A este ritmo alcanza hasta el reinicio"
+        )
+    }
+
+    func testFasterPaceUsesATwentyFourHourClockInBothLanguages() {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(secondsFromGMT: 0)!
+        let runsOut = Date(timeIntervalSince1970: 1_791_411_420) // 2026-10-07 22:17:00 UTC
+        let ahead = UsagePace.Forecast(elapsedFraction: 0.34, aheadPoints: 59, runsOutAt: runsOut)
+        let english = UsagePaceFormat.paceLine(
+            forecast: ahead,
+            usedPercent: 93,
+            locale: Locale(identifier: "en_US"),
+            calendar: calendar
+        )
+        XCTAssertEqual(english, "Using 59% faster than pace · runs out ~Wed 22:17")
+        XCTAssertFalse(english.contains("10:17"))
+        XCTAssertFalse(english.contains("PM"))
+
+        let spanish = UsagePaceFormat.paceLine(
+            forecast: ahead,
+            usedPercent: 93,
+            locale: Locale(identifier: "es_MX"),
+            calendar: calendar
+        )
+        XCTAssertTrue(spanish.contains("Vas 59% más rápido que el ritmo · se acaba ~"), spanish)
+        XCTAssertTrue(spanish.contains("22:17"), spanish)
+        XCTAssertFalse(spanish.contains("PM"), spanish)
+        XCTAssertFalse(spanish.contains("10:17"), spanish)
+        XCTAssertFalse(spanish.contains("ahead of pace"), spanish)
+    }
+
+    func testUnderPaceNamesTheSpareInEnglishAndSpanish() {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(secondsFromGMT: 0)!
+        let behind = UsagePace.Forecast(elapsedFraction: 0.5, aheadPoints: -12, runsOutAt: nil)
+        XCTAssertEqual(
+            UsagePaceFormat.paceLine(forecast: behind, usedPercent: 38, locale: Locale(identifier: "en_US"), calendar: calendar),
+            "Under pace, 12% to spare"
+        )
+        XCTAssertEqual(
+            UsagePaceFormat.paceLine(forecast: behind, usedPercent: 38, locale: Locale(identifier: "es_MX"), calendar: calendar),
+            "Por debajo del ritmo, te sobra 12%"
+        )
+    }
+
+    func testASmallPaceBandStillLastsUntilReset() {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(secondsFromGMT: 0)!
+        let runsOut = Date(timeIntervalSince1970: 1_791_411_420)
+        let band = UsagePaceFormat.onPaceBand
+        let inside = UsagePace.Forecast(elapsedFraction: 0.4, aheadPoints: band, runsOutAt: runsOut)
+        XCTAssertEqual(
+            UsagePaceFormat.paceLine(forecast: inside, usedPercent: 45, locale: Locale(identifier: "en_US"), calendar: calendar),
+            "On pace to last until reset"
+        )
+        let underBand = UsagePace.Forecast(elapsedFraction: 0.4, aheadPoints: -band, runsOutAt: nil)
+        XCTAssertEqual(
+            UsagePaceFormat.paceLine(forecast: underBand, usedPercent: 35, locale: Locale(identifier: "en_US"), calendar: calendar),
+            "On pace to last until reset"
+        )
+        let faster = UsagePace.Forecast(elapsedFraction: 0.4, aheadPoints: band + 1, runsOutAt: runsOut)
+        let fasterLine = UsagePaceFormat.paceLine(
+            forecast: faster,
+            usedPercent: 46,
+            locale: Locale(identifier: "en_US"),
+            calendar: calendar
+        )
+        XCTAssertTrue(fasterLine.contains("Using \(band + 1)% faster than pace"))
+        XCTAssertTrue(fasterLine.contains("22:17"))
+        let spare = UsagePace.Forecast(elapsedFraction: 0.4, aheadPoints: -(band + 1), runsOutAt: nil)
+        XCTAssertEqual(
+            UsagePaceFormat.paceLine(forecast: spare, usedPercent: 34, locale: Locale(identifier: "en_US"), calendar: calendar),
+            "Under pace, \(band + 1)% to spare"
+        )
+        let early = UsagePace.Forecast(elapsedFraction: 0.02, aheadPoints: 20, runsOutAt: nil)
+        XCTAssertEqual(
+            UsagePaceFormat.paceLine(forecast: early, usedPercent: 22, locale: Locale(identifier: "en_US"), calendar: calendar),
+            "Using 20% faster than pace"
+        )
+        XCTAssertFalse(
+            UsagePaceFormat.paceLine(forecast: early, usedPercent: 22, locale: Locale(identifier: "en_US"), calendar: calendar)
+                .contains("runs out")
         )
     }
 

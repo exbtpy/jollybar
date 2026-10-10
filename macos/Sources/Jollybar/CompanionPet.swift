@@ -49,6 +49,18 @@ enum CompanionMood: String {
     var accent: Color { JollyTheme.moodRGB(self).color }
 }
 
+/// Worried brows only. Positive degrees are clockwise, which drops the left
+/// brow's inner end and looks angry. The left brow turns the other way so both
+/// inner ends lift. No other mood draws brows.
+enum BudBrows {
+    static func degrees(mirrored: Bool) -> Double {
+        mirrored ? 18 : -18
+    }
+
+    /// How far above the eye the brow sits. Higher than the old scowl.
+    static let lift: CGFloat = 12
+}
+
 /// How far the mouth bows, as a fraction of its box.
 /// Above 0.5 the control point is below the corners: a smile.
 /// Below 0.5 it is above the corners: a frown. 0.5 is a flat line.
@@ -293,8 +305,8 @@ struct BudFigure: View {
             Capsule()
                 .fill(ink.opacity(0.8))
                 .frame(width: 9, height: 1.6)
-                .rotationEffect(.degrees(mirrored ? -18 : 18))
-                .offset(x: mirrored ? 2 : -2, y: -9)
+                .rotationEffect(.degrees(BudBrows.degrees(mirrored: mirrored)))
+                .offset(x: mirrored ? 2 : -2, y: -BudBrows.lift)
         }
     }
 

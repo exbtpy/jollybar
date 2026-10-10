@@ -29,7 +29,9 @@
 "speech.asleep.1" = "I'll nap until the next window.";
 "speech.asleep.2" = "Paused at the limit.";
 
-"pace.ahead" = "%d%% ahead of pace · runs out ~%@";
+"pace.ahead" = "Using %d%% faster than pace · runs out ~%@";
+"pace.faster" = "Using %d%% faster than pace";
+"pace.behind" = "Under pace, %d%% to spare";
 "pace.lasts" = "On pace to last until reset";
 "pace.atLimit" = "At the limit until reset";
 "reset.line" = "Resets %@ · in %@";

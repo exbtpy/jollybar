@@ -119,10 +119,12 @@ enum UsagePercentStyle: String, CaseIterable, Identifiable {
 
     static let defaultsKey = "usagePercentStyle"
 
-    var settingsTitle: String {
+    var settingsTitle: String { title(locale: nil) }
+
+    func title(locale: Locale?) -> String {
         switch self {
-        case .used: return L10n.text("percent.used", "Used")
-        case .left: return L10n.text("percent.left", "Left")
+        case .used: return L10n.text("percent.used", "Used", locale: locale)
+        case .left: return L10n.text("percent.left", "Left", locale: locale)
         }
     }
 }
