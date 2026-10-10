@@ -23,6 +23,10 @@ final class AppIdentityTests: XCTestCase {
 
         let package = try String(contentsOf: root.appendingPathComponent("macos/Package.swift"), encoding: .utf8)
         XCTAssertTrue(package.contains("name: \"\(AppIdentity.productName)\""))
+        XCTAssertTrue(package.contains("defaultLocalization: \"en\""))
+        XCTAssertTrue(plist.contains("<key>CFBundleLocalizations</key>"))
+        XCTAssertTrue(plist.contains("<string>es</string>"))
+        XCTAssertTrue(plist.contains("<key>CFBundleDevelopmentRegion</key>"))
 
         let buildScript = try String(contentsOf: root.appendingPathComponent("macos/scripts/build.sh"), encoding: .utf8)
         XCTAssertTrue(buildScript.contains(AppUpdater.upstreamSparklePublicKey))
