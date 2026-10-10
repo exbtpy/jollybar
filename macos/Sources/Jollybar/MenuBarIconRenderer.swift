@@ -79,6 +79,161 @@ func renderUnauthenticatedIcon() -> NSImage {
     renderIcon(topFraction: nil, topLabel: botLabel, bottomFraction: nil, bottomLabel: weeklyLabel)
 }
 
+/// Bud's face plus the Grok Bot percent. The face is a still frame: it changes
+/// only when the mood (or a reset that changes the mood) changes. The percent
+/// uses SF Pro Rounded with monospaced digits in a slot the width of "100%",
+/// so 8% and 100% take the same menu-bar width.
+/// A nil tint is a template image. From 70% used, pass the mood color.
+func renderCompanionStatusIcon(
+    mood: CompanionMood,
+    percentText: String,
+    tint: NSColor?
+) -> NSImage {
+    let font = menuPercentFont(size: 12)
+    let color = tint ?? NSColor.black
+    let attributes: [NSAttributedString.Key: Any] = [
+        .font: font,
+        .foregroundColor: color
+    ]
+    let slot = ceil(NSAttributedString(string: "100%", attributes: attributes).size().width)
+    let percent = NSAttributedString(string: percentText, attributes: attributes)
+    let percentWidth = max(slot, ceil(percent.size().width))
+    let face: CGFloat = 16
+    let gap: CGFloat = 3
+    let height: CGFloat = 18
+    let width = 1 + face + gap + percentWidth + 2
+    let image = NSImage(size: NSSize(width: width, height: height), flipped: true) { _ in
+        let faceY = (height - face) / 2
+        drawMenuBud(mood: mood, in: CGRect(x: 1, y: faceY, width: face, height: face), color: color)
+        let textSize = percent.size()
+        let textX = 1 + face + gap + percentWidth - textSize.width
+        let textY = (height - textSize.height) / 2
+        percent.draw(at: NSPoint(x: textX, y: textY))
+        return true
+    }
+    image.isTemplate = tint == nil
+    return image
+}
+
+private func menuPercentFont(size: CGFloat) -> NSFont {
+    let tabular = NSFont.monospacedDigitSystemFont(ofSize: size, weight: .semibold)
+    guard let rounded = tabular.fontDescriptor.withDesign(.rounded),
+          let font = NSFont(descriptor: rounded, size: size) else {
+        return tabular
+    }
+    return font
+}
+
+/// Monochrome face that still reads at 16pt. Filled marks stay visible as a template.
+private func drawMenuBud(mood: CompanionMood, in rect: CGRect, color: NSColor) {
+    color.setStroke()
+    color.setFill()
+    let weight = max(1.1, rect.width * 0.075)
+
+    let leaf = NSBezierPath(ovalIn: CGRect(
+        x: rect.midX + rect.width * 0.02,
+        y: rect.minY,
+        width: rect.width * 0.28,
+        height: rect.height * 0.24
+    ))
+    leaf.fill()
+
+    let head = NSBezierPath(ovalIn: CGRect(
+        x: rect.minX + rect.width * 0.08,
+        y: rect.minY + rect.height * 0.20,
+        width: rect.width * 0.84,
+        height: rect.height * 0.76
+    ))
+    head.lineWidth = weight
+    head.stroke()
+
+    let eyeY = rect.minY + rect.height * 0.46
+    let leftX = rect.minX + rect.width * 0.30
+    let rightX = rect.minX + rect.width * 0.58
+    switch mood {
+    case .asleep:
+        strokeMenuArc(x: leftX, y: eyeY, width: rect.width * 0.18, smiling: true, color: color)
+        strokeMenuArc(x: rightX, y: eyeY, width: rect.width * 0.18, smiling: true, color: color)
+        let z = NSAttributedString(
+            string: "z",
+            attributes: [
+                .font: NSFont.systemFont(ofSize: max(6, rect.width * 0.28), weight: .bold),
+                .foregroundColor: color
+            ]
+        )
+        z.draw(at: NSPoint(x: rect.maxX - rect.width * 0.28, y: rect.minY + 0.5))
+    case .tired:
+        fillMenuCapsule(x: leftX, y: eyeY, width: rect.width * 0.22, height: max(2, rect.height * 0.11), color: color)
+        fillMenuCapsule(x: rightX, y: eyeY, width: rect.width * 0.22, height: max(2, rect.height * 0.11), color: color)
+    case .worried:
+        fillMenuEye(x: leftX, y: eyeY, diameter: rect.width * 0.16, color: color)
+        fillMenuEye(x: rightX, y: eyeY, diameter: rect.width * 0.16, color: color)
+    case .playful:
+        fillMenuEye(x: leftX, y: eyeY - 0.4, diameter: rect.width * 0.13, color: color)
+        fillMenuEye(x: rightX, y: eyeY - 0.4, diameter: rect.width * 0.13, color: color)
+    case .steady, .unknown:
+        fillMenuEye(x: leftX, y: eyeY, diameter: rect.width * 0.11, color: color)
+        fillMenuEye(x: rightX, y: eyeY, diameter: rect.width * 0.11, color: color)
+    }
+
+    let mouthWidth = mood == .playful ? rect.width * 0.42 : rect.width * 0.30
+    let mouthRect = CGRect(
+        x: rect.midX - mouthWidth / 2,
+        y: rect.minY + rect.height * 0.64,
+        width: mouthWidth,
+        height: rect.height * 0.16
+    )
+    strokeMenuMouth(mood.mouth, in: mouthRect, color: color, weight: weight)
+}
+
+private func fillMenuEye(x: CGFloat, y: CGFloat, diameter: CGFloat, color: NSColor) {
+    color.setFill()
+    NSBezierPath(ovalIn: CGRect(x: x, y: y, width: diameter, height: diameter)).fill()
+}
+
+private func fillMenuCapsule(x: CGFloat, y: CGFloat, width: CGFloat, height: CGFloat, color: NSColor) {
+    color.setFill()
+    NSBezierPath(roundedRect: CGRect(x: x, y: y, width: width, height: height), xRadius: height / 2, yRadius: height / 2).fill()
+}
+
+private func strokeMenuArc(x: CGFloat, y: CGFloat, width: CGFloat, smiling: Bool, color: NSColor) {
+    let path = NSBezierPath()
+    let cornerY = smiling ? y : y + width * 0.35
+    let controlY = smiling ? y + width * 0.45 : y
+    path.move(to: NSPoint(x: x, y: cornerY))
+    path.curve(
+        to: NSPoint(x: x + width, y: cornerY),
+        controlPoint1: NSPoint(x: x + width * 0.35, y: controlY),
+        controlPoint2: NSPoint(x: x + width * 0.65, y: controlY)
+    )
+    color.setStroke()
+    path.lineWidth = 1.1
+    path.lineCapStyle = .round
+    path.stroke()
+}
+
+private func strokeMenuMouth(_ curve: MouthCurve, in rect: CGRect, color: NSColor, weight: CGFloat) {
+    let path = NSBezierPath()
+    if curve == .flat {
+        path.move(to: NSPoint(x: rect.minX, y: rect.midY))
+        path.line(to: NSPoint(x: rect.maxX, y: rect.midY))
+    } else {
+        let smiling = curve.depth > 0.5
+        let cornerY = smiling ? rect.minY : rect.maxY
+        let controlY = rect.minY + rect.height * curve.depth
+        path.move(to: NSPoint(x: rect.minX, y: cornerY))
+        path.curve(
+            to: NSPoint(x: rect.maxX, y: cornerY),
+            controlPoint1: NSPoint(x: rect.midX, y: controlY),
+            controlPoint2: NSPoint(x: rect.midX, y: controlY)
+        )
+    }
+    color.setStroke()
+    path.lineWidth = weight
+    path.lineCapStyle = .round
+    path.stroke()
+}
+
 private func drawCompanionGlyph(mood: CompanionMood, x: CGFloat, y: CGFloat, size: CGFloat) {
     let rect = NSRect(x: x + 0.5, y: y + 1, width: size - 1, height: size - 2)
     let body = NSBezierPath(ovalIn: rect)

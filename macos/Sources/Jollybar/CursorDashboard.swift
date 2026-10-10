@@ -18,9 +18,18 @@ import CommonCrypto
 /// Headers: `Authorization: Bearer`, `Content-Type: application/json`,
 /// `Connect-Protocol-Version: 1`.
 enum GrokBotSessionNotice {
-    static let openGrokBot = "Open Grok Bot to refresh sign-in"
-    static let keychainDenied = "Keychain access denied. Reopen \(AppIdentity.displayName) to retry."
-    static let notSignedIn = "Open Grok Bot and sign in. Teams and Enterprise can use an API key in Settings instead."
+    static var openGrokBot: String {
+        L10n.text("notice.openGrokBot", "Open Grok Bot to refresh sign-in")
+    }
+    static var keychainDenied: String {
+        L10n.text("notice.keychainDenied", "Keychain access denied. Reopen \(AppIdentity.displayName) to retry.")
+    }
+    static var notSignedIn: String {
+        L10n.text(
+            "notice.notSignedIn",
+            "Open Grok Bot and sign in. Teams and Enterprise can use an API key in Settings instead."
+        )
+    }
 }
 
 enum GrokBotKeyState {
@@ -202,6 +211,8 @@ struct CursorDashboardReading: Equatable {
     /// `GetSandUsageStatus.usagePercent`. Used percent of the Grok Bot weekly pool.
     let grokBotPercent: Double?
     let resetsAt: Date?
+    /// `GetSandUsageStatus.currentPeriodStart`. Nil when the body omits it.
+    let periodStart: Date?
     let includedLimitZero: Bool
     let hasAvailableUsage: Bool?
     /// `GetMe` email or display name. Nil when that call fails.
@@ -248,26 +259,26 @@ enum CursorDashboardParser {
     /// Grok Bot's unlimited on-demand sentinel. A limit at or above this is no cap.
     static let unlimitedSpendLimit: Int64 = 2_147_483_647
 
-    static func parseSand(_ data: Data, now: Date = Date()) -> (percent: Double?, resetsAt: Date?, includedLimitZero: Bool, hasAvailableUsage: Bool?, reason: String?) {
+    static func parseSand(_ data: Data, now: Date = Date()) -> (percent: Double?, resetsAt: Date?, includedLimitZero: Bool, hasAvailableUsage: Bool?, reason: String?, periodStart: Date?) {
         guard let object = jsonObject(data) else {
-            return (nil, nil, false, nil, "The Grok Bot usage response was not JSON.")
+            return (nil, nil, false, nil, "The Grok Bot usage response was not JSON.", nil)
         }
         let includedLimitZero = bool(object, "includedLimitZero", "included_limit_zero") ?? false
         let hasAvailableUsage = bool(object, "hasAvailableUsage", "has_available_usage")
         let percent = finite(object, "usagePercent", "usage_percent").flatMap(usablePercent)
+        let periodStart = timestamp(object["currentPeriodStart"] ?? object["current_period_start"])
         var resetsAt = timestamp(object["nextResetTimestampUtc"] ?? object["next_reset_timestamp_utc"])
         let trial = timestamp(object["sandTrialExpiresAt"] ?? object["sand_trial_expires_at"])
         let trialActive = trial.map { $0 > now } ?? false
         if resetsAt == nil, percent != nil || trialActive {
-            let start = timestamp(object["currentPeriodStart"] ?? object["current_period_start"])
-            if let start {
-                resetsAt = start.addingTimeInterval(week)
+            if let periodStart {
+                resetsAt = periodStart.addingTimeInterval(week)
             } else if let trial {
                 resetsAt = trial
             }
         }
         let reason = percent == nil ? "GetSandUsageStatus did not include usagePercent." : nil
-        return (percent, resetsAt, includedLimitZero, hasAvailableUsage, reason)
+        return (percent, resetsAt, includedLimitZero, hasAvailableUsage, reason, periodStart)
     }
 
     struct PeriodParse: Equatable {
@@ -670,6 +681,7 @@ struct CursorDashboardProvider {
             let reading = CursorDashboardReading(
                 grokBotPercent: sand.percent,
                 resetsAt: sand.resetsAt,
+                periodStart: sand.periodStart,
                 includedLimitZero: sand.includedLimitZero,
                 hasAvailableUsage: sand.hasAvailableUsage,
                 accountEmail: emailText,

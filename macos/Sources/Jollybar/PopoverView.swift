@@ -7,24 +7,37 @@ struct PopoverView: View {
     @ObservedObject var notificationService: NotificationService
     @ObservedObject var appUpdater: AppUpdater
     @AppStorage("setupComplete") private var setupComplete = false
-    @AppStorage(MenuTheme.defaultsKey) private var menuThemeRaw = MenuTheme.classic.rawValue
-    @State private var petAnimating = false
+    @AppStorage(MenuTheme.defaultsKey) private var menuThemeRaw = MenuTheme.defaultTheme.rawValue
+    @Environment(\.colorScheme) private var colorScheme
+
+    private var theme: MenuTheme {
+        MenuTheme(rawValue: menuThemeRaw) ?? .companion
+    }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            if !setupComplete && !service.isAuthenticated && !service.cursorConfigured {
-                SetupView(
-                    service: service,
-                    notificationService: notificationService,
-                    onComplete: { setupComplete = true }
-                )
-            } else {
+        if !setupComplete && !service.isAuthenticated && !service.cursorConfigured {
+            SetupView(
+                service: service,
+                notificationService: notificationService,
+                onComplete: { setupComplete = true }
+            )
+            .padding()
+            .frame(width: theme == .companion ? 320 : 360)
+            .background(theme == .companion ? JollyTheme.background(colorScheme) : Color.clear)
+        } else if theme == .companion {
+            CompanionScreen(
+                service: service,
+                historyService: historyService,
+                appUpdater: appUpdater
+            )
+        } else {
+            VStack(alignment: .leading, spacing: 10) {
                 header
                 usageView
             }
+            .padding()
+            .frame(width: 360)
         }
-        .padding()
-        .frame(width: 360)
     }
 
     private var header: some View {
@@ -46,15 +59,12 @@ struct PopoverView: View {
 
     @ViewBuilder
     private var usageView: some View {
-        if MenuTheme(rawValue: menuThemeRaw) == .companion {
-            CompanionPetView(mood: service.companionMood, animating: petAnimating)
-                .frame(maxWidth: .infinity)
-                .background(PopoverWindowVisible(isVisible: $petAnimating))
-                .onDisappear { petAnimating = false }
-        }
-
         meterRow(
-            title: service.sandOwnsTopSlot ? "Grok Bot" : (service.cursorConfigured ? "Grok Bot spend" : "Grok Bot"),
+            title: service.sandOwnsTopSlot
+                ? L10n.text("meter.grokBot", "Grok Bot")
+                : (service.cursorConfigured
+                    ? L10n.text("meter.grokBotSpend", "Grok Bot spend")
+                    : L10n.text("meter.grokBot", "Grok Bot")),
             percent: service.sandOwnsTopSlot ? service.dashboardReading?.grokBotPercent : service.cursorReading?.usedPercent,
             fraction: service.topFraction,
             detail: service.sandOwnsTopSlot ? nil : service.cursorReading?.amountDetail,
@@ -64,7 +74,9 @@ struct PopoverView: View {
         )
 
         meterRow(
-            title: service.showsSuperGrokPool ? "SuperGrok" : "Cursor Models",
+            title: service.showsSuperGrokPool
+                ? L10n.text("meter.superGrok", "SuperGrok")
+                : L10n.text("meter.cursorModels", "Cursor Models"),
             percent: service.showsSuperGrokPool ? service.reading?.usedPercent : service.dashboardReading?.cursorModelsPercent,
             fraction: service.bottomFraction,
             detail: nil,
@@ -74,7 +86,7 @@ struct PopoverView: View {
         )
 
         if hasDetails {
-            DisclosureGroup("Details") {
+            DisclosureGroup(L10n.text("section.details", "Details")) {
                 details
             }
             .font(.caption)
@@ -108,18 +120,18 @@ struct PopoverView: View {
         HStack(spacing: 8) {
             settingsButton
             Spacer()
-            Button("Refresh") {
+            Button(L10n.text("footer.refresh", "Refresh")) {
                 Task { await service.fetchUsage(refreshCursor: true) }
             }
             .buttonStyle(.borderless)
             .font(.caption)
-            Button("Check for Updates…") {
+            Button(L10n.text("settings.checkNow", "Check for Updates…")) {
                 appUpdater.checkForUpdates()
             }
             .buttonStyle(.borderless)
             .font(.caption)
             .disabled(!appUpdater.isConfigured)
-            Button("Quit") { NSApplication.shared.terminate(nil) }
+            Button(L10n.text("footer.quit", "Quit")) { NSApplication.shared.terminate(nil) }
                 .buttonStyle(.borderless)
                 .font(.caption)
                 .foregroundStyle(.secondary)
@@ -128,7 +140,10 @@ struct PopoverView: View {
 
     private var botFootnote: String? {
         guard !service.sandOwnsTopSlot, service.cursorReading?.resetIsAssumedMonthly == true else { return nil }
-        return "Cycle end is the next calendar month after the billing-cycle start."
+        return L10n.text(
+            "meter.assumedMonthly",
+            "Cycle end is the next calendar month after the billing-cycle start."
+        )
     }
 
     private var botStatus: MeterStatus? {
@@ -158,7 +173,7 @@ struct PopoverView: View {
                 return MeterStatus(text: error, isError: !hint)
             }
             if !service.isAuthenticated {
-                return MeterStatus(text: "Run grok login", isError: false)
+                return MeterStatus(text: L10n.text("notice.grokLogin", "Run grok login"), isError: false)
             }
             return nil
         }
@@ -167,10 +182,13 @@ struct PopoverView: View {
             return MeterStatus(text: reason, isError: service.dashboardReading?.cursorModelsPercent == nil)
         }
         if service.dashboardPresence == .absent {
-            return MeterStatus(text: "Cursor Models usage appears after Grok Bot is signed in.", isError: false)
+            return MeterStatus(text: L10n.text(
+                "notice.modelsAfterSignIn",
+                "Cursor Models usage appears after Grok Bot is signed in."
+            ), isError: false)
         }
         if service.dashboardError != nil {
-            return MeterStatus(text: "Cursor Models unavailable.", isError: false)
+            return MeterStatus(text: L10n.text("notice.modelsUnavailable", "Cursor Models unavailable."), isError: false)
         }
         return nil
     }
@@ -199,20 +217,20 @@ struct PopoverView: View {
                 .padding(.top, 4)
         }
         if service.showsSuperGrokPool, let percent = service.dashboardReading?.cursorModelsPercent {
-            labeled("Cursor Models", "\(Int(round(percent)))%")
+            labeled(L10n.text("meter.cursorModels", "Cursor Models"), "\(Int(round(percent)))%")
                 .padding(.top, 4)
         }
         if let percent = service.dashboardReading?.otherModelsPercent {
-            labeled("Other Models", "\(Int(round(percent)))%")
+            labeled(L10n.text("meter.otherModels", "Other models"), "\(Int(round(percent)))%")
         }
         if service.dashboardReading?.onDemandKnown == true {
             if let spend = service.dashboardReading?.onDemand {
                 labeled(
-                    "On-demand",
+                    L10n.text("meter.onDemand", "On-demand"),
                     "\(USDFormat.cents(spend.usedCents)) / \(USDFormat.cents(spend.limitCents))"
                 )
             } else {
-                labeled("On-demand", "No cap")
+                labeled(L10n.text("meter.onDemand", "On-demand"), L10n.text("meter.noCap", "No cap"))
             }
         }
         let products = service.showsSuperGrokPool ? (service.reading?.products ?? []) : []
@@ -222,7 +240,7 @@ struct PopoverView: View {
         }
         if let cents = service.reading?.extraCreditsCents {
             HStack {
-                Text("Extra Usage Credits")
+                Text(L10n.text("detail.extraCredits", "Extra Usage Credits"))
                 Spacer()
                 Text(USDFormat.cents(cents))
                     .monospacedDigit()
@@ -231,7 +249,7 @@ struct PopoverView: View {
         }
         if let cap = service.reading?.onDemandCapCents, cap > 0 || (service.reading?.onDemandUsedCents ?? 0) > 0 {
             HStack {
-                Text("grok.com on-demand")
+                Text(L10n.text("detail.grokOnDemand", "grok.com on-demand"))
                 Spacer()
                 Text("\(USDFormat.cents(service.reading?.onDemandUsedCents ?? 0)) / \(USDFormat.cents(cap))")
                     .monospacedDigit()
@@ -295,7 +313,7 @@ struct PopoverView: View {
 
     private var managementSection: some View {
         VStack(alignment: .leading, spacing: 4) {
-            Text("Developer API")
+            Text(L10n.text("settings.apiSection", "Developer API"))
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
             if let snapshot = service.management {
@@ -312,7 +330,10 @@ struct PopoverView: View {
                     .foregroundStyle(.red)
                     .fixedSize(horizontal: false, vertical: true)
             }
-            Text("Console prepaid balance and API spend. Separate from the weekly pool. The documented balance is shown with its sign.")
+            Text(L10n.text(
+                "detail.managementLong",
+                "Console prepaid balance and API spend. Separate from the weekly pool. The documented balance is shown with its sign."
+            ))
                 .font(.caption2)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -363,7 +384,7 @@ struct PopoverView: View {
 
     private var settingsButton: some View {
         SettingsLink {
-            Text("Settings…")
+            Text(L10n.text("footer.settingsEllipsis", "Settings…"))
         }
         .buttonStyle(.borderless)
         .font(.caption)
@@ -376,9 +397,12 @@ private struct SetupView: View {
     var onComplete: () -> Void
 
     var body: some View {
-        Text("Welcome")
+        Text(L10n.text("setup.welcome", "Welcome"))
             .font(.headline)
-        Text(LocalizedStringKey("\(AppIdentity.displayName) shows Grok Bot weekly usage and, when your grok.com account has one, the SuperGrok pool."))
+        Text(L10n.text(
+            "setup.body",
+            "\(AppIdentity.displayName) shows Grok Bot weekly usage and, when your grok.com account has one, the SuperGrok pool."
+        ))
             .font(.subheadline)
             .foregroundStyle(.secondary)
             .fixedSize(horizontal: false, vertical: true)
@@ -388,21 +412,21 @@ private struct SetupView: View {
         Divider()
 
         VStack(alignment: .leading, spacing: 8) {
-            Text("Notifications")
+            Text(L10n.text("settings.notifications", "Notifications"))
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
             if !notificationService.isAvailable {
-                Text(notificationsUnavailableMessage)
+                Text(notificationsUnavailableMessage())
                     .font(.caption2)
                     .foregroundStyle(.secondary)
             }
             SetupThresholdSlider(
-                label: "Grok Bot",
+                label: L10n.text("meter.grokBot", "Grok Bot"),
                 value: notificationService.thresholdBot,
                 onChange: { notificationService.setThresholdBot($0) }
             )
             SetupThresholdSlider(
-                label: "Weekly pool",
+                label: L10n.text("settings.weeklyPool", "Weekly pool"),
                 value: notificationService.thresholdWeekly,
                 onChange: { notificationService.setThresholdWeekly($0) }
             )
@@ -412,7 +436,7 @@ private struct SetupView: View {
         Divider()
 
         VStack(alignment: .leading, spacing: 6) {
-            Text("Polling Interval")
+            Text(L10n.text("settings.polling", "Polling Interval"))
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
             Picker("", selection: Binding(
@@ -427,19 +451,19 @@ private struct SetupView: View {
             .pickerStyle(.segmented)
             .labelsHidden()
             if isDiscouragedPollingOption(service.pollingMinutes) {
-                Text("Frequent polling may cause rate limiting")
+                Text(L10n.text("setup.pollingWarning", "Frequent polling may cause rate limiting"))
                     .font(.caption2)
                     .foregroundStyle(.orange)
             }
         }
 
         Divider()
-        Button("Get Started") { onComplete() }
+        Button(L10n.text("setup.start", "Get Started")) { onComplete() }
             .buttonStyle(.borderedProminent)
             .frame(maxWidth: .infinity)
         HStack {
             Spacer()
-            Button("Quit") { NSApplication.shared.terminate(nil) }
+            Button(L10n.text("footer.quit", "Quit")) { NSApplication.shared.terminate(nil) }
                 .buttonStyle(.borderless)
                 .font(.caption)
                 .foregroundStyle(.secondary)
@@ -458,7 +482,7 @@ private struct SetupThresholdSlider: View {
                 Text(label)
                     .font(.callout)
                 Spacer()
-                Text(value > 0 ? "\(value)%" : "Off")
+                Text(value > 0 ? "\(value)%" : L10n.text("settings.off", "Off"))
                     .font(.callout)
                     .foregroundStyle(.secondary)
             }

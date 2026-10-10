@@ -2,8 +2,7 @@ import AppKit
 import SwiftUI
 
 /// Original menu-bar companion. It is a pebble with one leaf, not a cup and
-/// not a product logo. The pose follows Grok Bot weekly usage. The accent
-/// moves from calm teal, to amber, to red.
+/// not a product logo. The pose follows Grok Bot weekly usage.
 enum CompanionMood: String {
     case playful
     case steady
@@ -24,12 +23,12 @@ enum CompanionMood: String {
 
     var caption: String {
         switch self {
-        case .playful: return "Energetic"
-        case .steady: return "Steady"
-        case .tired: return "Tired"
-        case .worried: return "Near the limit"
-        case .asleep: return "Asleep"
-        case .unknown: return "Waiting for Grok Bot"
+        case .playful: return L10n.text("mood.playful", "Energetic")
+        case .steady: return L10n.text("mood.steady", "Steady")
+        case .tired: return L10n.text("mood.tired", "Tired")
+        case .worried: return L10n.text("mood.worried", "Near the limit")
+        case .asleep: return L10n.text("mood.asleep", "Asleep")
+        case .unknown: return L10n.text("mood.unknown", "Waiting for Grok Bot")
         }
     }
 
@@ -47,16 +46,7 @@ enum CompanionMood: String {
         }
     }
 
-    var accent: Color {
-        switch self {
-        case .playful, .steady, .unknown:
-            return Color(red: 0.20, green: 0.62, blue: 0.64)
-        case .tired:
-            return Color(red: 0.86, green: 0.56, blue: 0.16)
-        case .worried, .asleep:
-            return Color(red: 0.78, green: 0.28, blue: 0.30)
-        }
-    }
+    var accent: Color { JollyTheme.moodRGB(self).color }
 }
 
 /// How far the mouth bows, as a fraction of its box.
@@ -105,19 +95,254 @@ enum MenuTheme: String {
     case companion
 
     static let defaultsKey = "menuTheme"
+    static let defaultTheme = MenuTheme.companion
 }
 
-/// SwiftUI companion. The timeline runs only while `animating` is true.
-struct CompanionPetView: View {
-    let mood: CompanionMood
-    var animating: Bool
+/// Pointed leaf from the sprout on Bud's head. Also the pace marker.
+struct BudLeafShape: Shape {
+    func path(in rect: CGRect) -> Path {
+        var path = Path()
+        path.move(to: CGPoint(x: rect.midX, y: rect.maxY))
+        path.addQuadCurve(
+            to: CGPoint(x: rect.midX, y: rect.minY),
+            control: CGPoint(x: rect.maxX, y: rect.midY * 0.85 + rect.minY * 0.15)
+        )
+        path.addQuadCurve(
+            to: CGPoint(x: rect.midX, y: rect.maxY),
+            control: CGPoint(x: rect.minX, y: rect.midY)
+        )
+        path.closeSubpath()
+        return path
+    }
+}
+
+struct BudHeartShape: Shape {
+    func path(in rect: CGRect) -> Path {
+        var path = Path()
+        let top = rect.minY + rect.height * 0.28
+        path.move(to: CGPoint(x: rect.midX, y: rect.maxY))
+        path.addCurve(
+            to: CGPoint(x: rect.minX, y: top),
+            control1: CGPoint(x: rect.minX + rect.width * 0.08, y: rect.maxY * 0.62 + rect.minY * 0.38),
+            control2: CGPoint(x: rect.minX, y: rect.midY)
+        )
+        path.addArc(
+            center: CGPoint(x: rect.minX + rect.width * 0.28, y: top),
+            radius: rect.width * 0.24,
+            startAngle: .degrees(180),
+            endAngle: .degrees(0),
+            clockwise: false
+        )
+        path.addArc(
+            center: CGPoint(x: rect.minX + rect.width * 0.72, y: top),
+            radius: rect.width * 0.24,
+            startAngle: .degrees(180),
+            endAngle: .degrees(0),
+            clockwise: false
+        )
+        path.addCurve(
+            to: CGPoint(x: rect.midX, y: rect.maxY),
+            control1: CGPoint(x: rect.maxX, y: rect.midY),
+            control2: CGPoint(x: rect.maxX - rect.width * 0.08, y: rect.maxY * 0.62 + rect.minY * 0.38)
+        )
+        path.closeSubpath()
+        return path
+    }
+}
+
+/// Bud at popover size. `eyeOpen` is 1 awake and near 0 in a blink.
+/// Tired keeps a heavy lid. Asleep stays closed and shows a z.
+struct BudFigure: View {
+    var mood: CompanionMood
+    var eyeOpen: CGFloat = 1
+
+    private var ink: Color { JollyTheme.ink.color }
+    private var moodColor: Color { mood.accent }
 
     var body: some View {
-        TimelineView(.animation(minimumInterval: 0.12, paused: !animating)) { timeline in
-            let phase = animating ? timeline.date.timeIntervalSinceReferenceDate : 0
-            CompanionPetPose(mood: mood, phase: phase)
+        ZStack {
+            Ellipse()
+                .fill(ink.opacity(0.10))
+                .frame(width: 46, height: 8)
+                .offset(y: 36)
+            sprout
+                .offset(y: -34)
+            bodyShape
+            cheeks
+            eyes
+                .offset(y: -6)
+            mouth
+                .offset(y: 12)
+            if mood == .asleep {
+                sleepMarks
+                    .offset(x: 28, y: -30)
+            }
         }
+        .frame(width: 88, height: 88)
         .accessibilityLabel(mood.accessibilityLabel)
+    }
+
+    private var sprout: some View {
+        ZStack {
+            Capsule()
+                .fill(JollyTheme.deepTeal.color)
+                .frame(width: 3, height: 12)
+                .offset(y: 8)
+            BudLeafShape()
+                .fill(JollyTheme.teal.color)
+                .frame(width: 16, height: 22)
+                .rotationEffect(.degrees(-28))
+                .overlay(
+                    Capsule()
+                        .fill(JollyTheme.cream.color.opacity(0.7))
+                        .frame(width: 1.4, height: 10)
+                        .rotationEffect(.degrees(-28))
+                )
+                .offset(x: 5, y: -2)
+        }
+        .frame(width: 28, height: 28)
+    }
+
+    private var bodyShape: some View {
+        RoundedRectangle(cornerRadius: 28, style: .continuous)
+            .fill(JollyTheme.cream.color)
+            .overlay(
+                RoundedRectangle(cornerRadius: 28, style: .continuous)
+                    .fill(moodColor.opacity(mood == .asleep ? 0.22 : 0.14))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 28, style: .continuous)
+                    .stroke(moodColor, lineWidth: 2.4)
+            )
+            .overlay(alignment: .top) {
+                Capsule()
+                    .fill(Color.white.opacity(0.55))
+                    .frame(width: 22, height: 7)
+                    .offset(y: 8)
+            }
+            .frame(width: 64, height: 54)
+    }
+
+    @ViewBuilder
+    private var cheeks: some View {
+        if mood == .playful || mood == .steady {
+            HStack(spacing: 22) {
+                cheek
+                cheek
+            }
+            .offset(y: 4)
+        }
+    }
+
+    private var cheek: some View {
+        Ellipse()
+            .fill(moodColor.opacity(0.38))
+            .frame(width: 8, height: 5)
+    }
+
+    @ViewBuilder
+    private var eyes: some View {
+        switch mood {
+        case .asleep:
+            HStack(spacing: 12) {
+                closedEye
+                closedEye
+            }
+        case .tired:
+            HStack(spacing: 12) {
+                tiredEye
+                tiredEye
+            }
+            .scaleEffect(x: 1, y: max(0.35, eyeOpen), anchor: .center)
+        case .worried:
+            HStack(spacing: 12) {
+                worriedEye(mirrored: false)
+                worriedEye(mirrored: true)
+            }
+            .scaleEffect(x: 1, y: max(0.12, eyeOpen), anchor: .center)
+        case .playful:
+            HStack(spacing: 14) {
+                openEye(diameter: 9)
+                openEye(diameter: 9)
+            }
+            .scaleEffect(x: 1, y: max(0.12, eyeOpen), anchor: .center)
+        case .steady, .unknown:
+            HStack(spacing: 14) {
+                openEye(diameter: 7)
+                openEye(diameter: 7)
+            }
+            .scaleEffect(x: 1, y: max(0.12, eyeOpen), anchor: .center)
+        }
+    }
+
+    private func openEye(diameter: CGFloat) -> some View {
+        ZStack {
+            Circle()
+                .fill(ink)
+                .frame(width: diameter, height: diameter)
+            Circle()
+                .fill(Color.white.opacity(0.92))
+                .frame(width: diameter * 0.28, height: diameter * 0.28)
+                .offset(x: -diameter * 0.16, y: -diameter * 0.16)
+        }
+    }
+
+    private func worriedEye(mirrored: Bool) -> some View {
+        ZStack(alignment: .top) {
+            openEye(diameter: 11)
+            Capsule()
+                .fill(ink.opacity(0.8))
+                .frame(width: 9, height: 1.6)
+                .rotationEffect(.degrees(mirrored ? -18 : 18))
+                .offset(x: mirrored ? 2 : -2, y: -9)
+        }
+    }
+
+    private var tiredEye: some View {
+        ZStack {
+            Capsule()
+                .fill(ink.opacity(0.85))
+                .frame(width: 12, height: 5.5)
+            Capsule()
+                .fill(ink)
+                .frame(width: 12, height: 2.2)
+                .offset(y: -1.6)
+        }
+    }
+
+    private var closedEye: some View {
+        CompanionMouth(curve: .softSmile)
+            .stroke(ink.opacity(0.85), style: StrokeStyle(lineWidth: 1.8, lineCap: .round))
+            .frame(width: 11, height: 6)
+    }
+
+    private var mouth: some View {
+        let wide = mood == .playful
+        return CompanionMouth(curve: mood.mouth)
+            .stroke(ink.opacity(0.88), style: StrokeStyle(lineWidth: wide ? 2.2 : 1.8, lineCap: .round))
+            .frame(width: wide ? 20 : 13, height: mood.mouth == .flat ? 4 : 9)
+    }
+
+    private var sleepMarks: some View {
+        HStack(alignment: .bottom, spacing: 1) {
+            Text("z")
+                .font(.system(size: 8, weight: .bold, design: .rounded))
+            Text("z")
+                .font(.system(size: 11, weight: .bold, design: .rounded))
+        }
+        .foregroundStyle(JollyTheme.asleep.color)
+    }
+}
+
+/// A 12pt face so the sprout chart can mark today without a second drawing style.
+struct BudMarker: View {
+    var mood: CompanionMood
+
+    var body: some View {
+        BudFigure(mood: mood, eyeOpen: 1)
+            .scaleEffect(14 / 88)
+            .frame(width: 14, height: 14)
+            .clipped()
     }
 }
 
@@ -171,155 +396,5 @@ struct PopoverWindowVisible: NSViewRepresentable {
         deinit {
             observers.forEach(NotificationCenter.default.removeObserver)
         }
-    }
-}
-
-struct CompanionPetPose: View {
-    let mood: CompanionMood
-    var phase: TimeInterval
-
-    var body: some View {
-        VStack(spacing: 4) {
-            ZStack {
-                Circle()
-                    .fill(mood.accent.opacity(mood == .asleep ? 0.16 : 0.28))
-                    .frame(width: 78, height: 78)
-                    .offset(y: 4)
-                pebble
-                    .offset(x: shake, y: bob)
-            }
-            .frame(width: 96, height: 88)
-            Text(AppIdentity.companionName)
-                .font(.caption.weight(.semibold))
-            Text(mood.caption)
-                .font(.caption2)
-                .foregroundStyle(mood.accent)
-        }
-    }
-
-    private var pebble: some View {
-        ZStack {
-            leaf
-                .offset(x: 16, y: -30)
-            Capsule(style: .continuous)
-                .fill(bodyColor)
-                .frame(width: 54, height: 46)
-                .overlay(
-                    Capsule(style: .continuous)
-                        .stroke(mood.accent.opacity(0.9), lineWidth: 1.5)
-                )
-            eyes
-                .offset(y: -4)
-            mouth
-                .offset(y: 10)
-            HStack(spacing: 16) {
-                Capsule().fill(mood.accent.opacity(0.85)).frame(width: 8, height: 6)
-                Capsule().fill(mood.accent.opacity(0.85)).frame(width: 8, height: 6)
-            }
-            .offset(y: 26)
-            if mood == .asleep {
-                sleepMarks
-                    .offset(x: 28, y: -24 + sleepDrift)
-            }
-        }
-    }
-
-    private var leaf: some View {
-        Ellipse()
-            .fill(Color(red: 0.35, green: 0.62, blue: 0.38))
-            .frame(width: 14, height: 18)
-            .rotationEffect(.degrees(-28))
-            .overlay(
-                Capsule()
-                    .fill(Color.white.opacity(0.35))
-                    .frame(width: 1.5, height: 10)
-                    .rotationEffect(.degrees(-28))
-            )
-    }
-
-    private var bodyColor: Color {
-        mood == .asleep ? mood.accent.opacity(0.35) : mood.accent.opacity(0.55)
-    }
-
-    @ViewBuilder
-    private var eyes: some View {
-        switch mood {
-        case .playful:
-            HStack(spacing: 12) {
-                eyeDot(size: 8, highlight: true)
-                eyeDot(size: 8, highlight: true)
-            }
-        case .steady, .unknown:
-            HStack(spacing: 12) {
-                eyeDot(size: 6, highlight: false)
-                eyeDot(size: 6, highlight: false)
-            }
-        case .tired:
-            HStack(spacing: 12) {
-                Capsule().fill(Color.black.opacity(0.75)).frame(width: 10, height: 3)
-                Capsule().fill(Color.black.opacity(0.75)).frame(width: 10, height: 3)
-            }
-            .offset(y: 2)
-        case .worried:
-            HStack(spacing: 10) {
-                eyeDot(size: 11, highlight: true)
-                eyeDot(size: 11, highlight: true)
-            }
-        case .asleep:
-            HStack(spacing: 12) {
-                Capsule().fill(Color.black.opacity(0.7)).frame(width: 10, height: 2)
-                Capsule().fill(Color.black.opacity(0.7)).frame(width: 10, height: 2)
-            }
-        }
-    }
-
-    private func eyeDot(size: CGFloat, highlight: Bool) -> some View {
-        ZStack {
-            Circle().fill(Color.black.opacity(0.8)).frame(width: size, height: size)
-            if highlight {
-                Circle().fill(Color.white.opacity(0.9)).frame(width: size * 0.28, height: size * 0.28)
-                    .offset(x: -size * 0.15, y: -size * 0.15)
-            }
-        }
-    }
-
-    private var mouth: some View {
-        CompanionMouth(curve: mood.mouth)
-            .stroke(Color.black.opacity(0.75), style: StrokeStyle(lineWidth: 1.6, lineCap: .round))
-            .frame(width: mood == .playful ? 16 : 12, height: mood.mouth == .flat ? 4 : 8)
-    }
-
-    private var sleepMarks: some View {
-        HStack(spacing: 2) {
-            Text("z")
-            Text("z").font(.caption2)
-        }
-        .font(.system(size: 9, weight: .semibold))
-        .foregroundStyle(mood.accent)
-    }
-
-    private var bob: CGFloat {
-        switch mood {
-        case .playful:
-            return CGFloat(sin(phase * 4)) * 4
-        case .steady:
-            return CGFloat(sin(phase * 1.2)) * 1.5
-        case .tired:
-            return 3
-        case .worried:
-            return 0
-        case .asleep:
-            return CGFloat(sin(phase * 0.8)) * 1
-        case .unknown:
-            return 0
-        }
-    }
-
-    private var shake: CGFloat {
-        mood == .worried ? CGFloat(sin(phase * 9)) * 1.4 : 0
-    }
-
-    private var sleepDrift: CGFloat {
-        CGFloat(sin(phase * 1.4)) * 2
     }
 }

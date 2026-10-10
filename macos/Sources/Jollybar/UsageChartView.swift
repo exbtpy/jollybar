@@ -27,7 +27,7 @@ struct UsageChartView: View {
             )
 
             if series.isEmpty {
-                Text("No history data yet.")
+                Text(L10n.text("chart.empty", "No history data yet."))
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity, minHeight: 120, alignment: .center)
@@ -165,17 +165,17 @@ struct UsageChartView: View {
                 .font(.system(size: 9))
                 .foregroundStyle(.secondary)
             if let pctBot = values.pctBot {
-                Text("Grok Bot \(Int(round(pctBot * 100)))%")
+                Text("\(L10n.text("meter.grokBot", "Grok Bot")) \(Int(round(pctBot * 100)))%")
                     .font(.system(size: 9, weight: .medium))
                     .foregroundStyle(.blue)
             }
             if values.showsWeekly {
-                Text("Weekly \(Int(round(values.pctWeekly * 100)))%")
+                Text("\(L10n.text("chart.weekly", "Weekly")) \(Int(round(values.pctWeekly * 100)))%")
                     .font(.system(size: 9, weight: .medium))
                     .foregroundStyle(.orange)
             }
             if values.showsCursorModels, let pct = values.pctCursorModels {
-                Text("Cursor Models \(Int(round(pct * 100)))%")
+                Text("\(L10n.text("meter.cursorModels", "Cursor Models")) \(Int(round(pct * 100)))%")
                     .font(.system(size: 9, weight: .medium))
                     .foregroundStyle(.teal)
             }

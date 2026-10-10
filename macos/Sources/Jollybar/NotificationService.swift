@@ -152,8 +152,12 @@ class NotificationService: ObservableObject {
 
 /// Shown wherever notification controls are offered but cannot work. Only
 /// reachable in development — a packaged build always declares APPL.
-let notificationsUnavailableMessage =
-    "Notifications require a packaged application build — run `make app` and launch the bundle."
+func notificationsUnavailableMessage() -> String {
+    L10n.text(
+        "notifications.unavailable",
+        "Notifications require a packaged application build — run `make app` and launch the bundle."
+    )
+}
 
 /// Whether this process can use `UNUserNotificationCenter` at all.
 ///

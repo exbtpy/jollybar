@@ -11,7 +11,7 @@ struct JollybarApp: App {
     @StateObject private var historyService = UsageHistoryService()
     @StateObject private var notificationService = NotificationService()
     @StateObject private var appUpdater = AppUpdater()
-    @AppStorage(MenuTheme.defaultsKey) private var menuThemeRaw = MenuTheme.classic.rawValue
+    @AppStorage(MenuTheme.defaultsKey) private var menuThemeRaw = MenuTheme.defaultTheme.rawValue
 
     var body: some Scene {
         MenuBarExtra {
@@ -22,19 +22,17 @@ struct JollybarApp: App {
                 appUpdater: appUpdater
             )
         } label: {
-            Image(nsImage: renderIcon(
+            MenuBarLabel(
+                theme: MenuTheme(rawValue: menuThemeRaw) ?? .companion,
+                mood: service.companionMood,
+                usedPercent: service.sandOwnsTopSlot
+                    ? service.dashboardReading?.grokBotPercent
+                    : service.cursorReading?.usedPercent,
                 topFraction: service.topFraction,
                 topLabel: service.topLabel,
                 bottomFraction: service.bottomFraction,
-                bottomLabel: service.bottomLabel,
-                theme: MenuTheme(rawValue: menuThemeRaw) ?? .classic,
-                mood: service.companionMood
-            ))
-                .accessibilityLabel(
-                    MenuTheme(rawValue: menuThemeRaw) == .companion
-                        ? AppIdentity.companionName
-                        : AppIdentity.displayName
-                )
+                bottomLabel: service.bottomLabel
+            )
                 .task {
                     _ = migrated
                     if service.isAuthenticated && !UserDefaults.standard.bool(forKey: "setupComplete") {
@@ -58,5 +56,41 @@ struct JollybarApp: App {
         .windowResizability(.automatic)
         .defaultSize(width: SettingsLayout.windowWidth, height: SettingsLayout.openingContentHeight)
         .windowStyle(.titleBar)
+    }
+}
+
+struct MenuBarLabel: View {
+    let theme: MenuTheme
+    let mood: CompanionMood
+    let usedPercent: Double?
+    let topFraction: Double?
+    let topLabel: String
+    let bottomFraction: Double?
+    let bottomLabel: String
+
+    var body: some View {
+        if theme == .companion {
+            let text = UsageNumber.menuText(usedPercent: usedPercent)
+            let tint = JollyTheme.menuTint(mood: mood, usedPercent: usedPercent)?.nsColor
+            Image(nsImage: renderCompanionStatusIcon(mood: mood, percentText: text, tint: tint))
+                .accessibilityLabel(accessibilityText(percent: text))
+        } else {
+            Image(nsImage: renderIcon(
+                topFraction: topFraction,
+                topLabel: topLabel,
+                bottomFraction: bottomFraction,
+                bottomLabel: bottomLabel,
+                theme: .classic,
+                mood: mood
+            ))
+            .accessibilityLabel(AppIdentity.displayName)
+        }
+    }
+
+    private func accessibilityText(percent: String) -> String {
+        if percent == "—" {
+            return "\(AppIdentity.companionName), \(mood.caption)"
+        }
+        return "\(AppIdentity.companionName), \(percent), \(mood.caption)"
     }
 }

@@ -80,6 +80,7 @@ final class CursorDashboardTests: XCTestCase {
         XCTAssertFalse(parsed.includedLimitZero)
         XCTAssertEqual(parsed.hasAvailableUsage, true as Bool?)
         XCTAssertNotNil(parsed.resetsAt)
+        XCTAssertEqual(parsed.periodStart, DateParsing.parseISO8601("2026-09-29T00:00:00Z"))
         XCTAssertNil(parsed.reason)
 
         let period = """
