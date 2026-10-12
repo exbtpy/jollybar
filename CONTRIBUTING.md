@@ -33,7 +33,7 @@ macos/Sources/Jollybar/
 
 The app icon source is `design/logo/jollybar-icon.svg`. `python3 design/logo/render_icon.py` (or `make icon`) rewrites `macos/Resources/AppIcon.icns`, the asset catalog, `docs/images/logo.png`, and `docs/images/wordmark.png`. It needs cairosvg. `make app` uses the committed icons and does not run the script.
 
-The weekly-pool request and the Cursor requests are documented in the README, including which fields are assumed. Change `GrokBillingParser.swift` or `CursorUsage.swift` when a live probe disagrees, and add a test next to the fixture.
+The weekly-pool request and the Cursor requests are documented in [docs/TECHNICAL.md](docs/TECHNICAL.md), including which fields are assumed. Change `GrokBillingParser.swift` or `CursorUsage.swift` when a live probe disagrees, and add a test next to the fixture.
 
 ## Mock server
 
@@ -41,7 +41,7 @@ The weekly-pool request and the Cursor requests are documented in the README, in
 python3 scripts/mock-server.py --port 8080
 ```
 
-See the README for the loopback environment variables. Do not log or print tokens.
+See [docs/TECHNICAL.md](docs/TECHNICAL.md) for the loopback environment variables. Do not log or print tokens.
 
 ## Sparkle
 
