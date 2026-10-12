@@ -102,6 +102,7 @@ struct CompanionMouth: Shape {
     }
 }
 
+/// Stored menu-bar glyph. It does not choose the popover.
 enum MenuTheme: String, CaseIterable, Identifiable {
     case percent
     case bars
@@ -124,9 +125,6 @@ enum MenuTheme: String, CaseIterable, Identifiable {
             return .percent
         }
     }
-
-    /// Percent and Companion keep the Bud popover. Usage bars keeps the meter popover.
-    var showsCompanionPopover: Bool { self != .bars }
 }
 
 /// One-shot rewrite of the old menu-bar values. Runs after identity migration

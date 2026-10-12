@@ -41,7 +41,7 @@ struct CompanionPopoverModel: Equatable {
 enum CompanionPopoverModelBuilder {
     static func make(
         service: UsageService,
-        appUpdater: AppUpdater,
+        updaterError: String?,
         percentStyle: UsagePercentStyle,
         chartMode: UsageChartMode,
         sprouts: [SproutWeek.Day]
@@ -76,7 +76,7 @@ enum CompanionPopoverModelBuilder {
             sproutReady: sprouts.count == 7,
             chartMode: chartMode,
             syncedAt: service.lastUpdated,
-            updaterError: appUpdater.lastError,
+            updaterError: updaterError,
             details: detailRows(service),
             detailNote: service.managementConfigured
                 ? L10n.text(
@@ -222,7 +222,7 @@ struct CompanionScreen: View {
         let sprouts = SproutWeek.build(points: historyService.history.dataPoints, now: Date()) ?? []
         let model = CompanionPopoverModelBuilder.make(
             service: service,
-            appUpdater: appUpdater,
+            updaterError: appUpdater.lastError,
             percentStyle: style,
             chartMode: mode,
             sprouts: sprouts
@@ -303,7 +303,7 @@ struct CompanionPopover<HistoryChart: View>: View {
                 }
             }
         }
-        .frame(width: 320)
+        .frame(width: PopoverContent.width)
         .background(JollyTheme.background(scheme))
         .onAppear { syncBar(animated: false) }
         .onChange(of: heroFraction) { _, _ in

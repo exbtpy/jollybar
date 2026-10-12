@@ -180,6 +180,11 @@ final class UsageService: ObservableObject {
         self.cursorConfigured = secretStore.load(account: CursorSecret.account) != nil
     }
 
+    /// Plants the grok.com address. The popover must ignore it; Settings may show it.
+    func replaceAccountEmail(_ email: String?) {
+        accountEmail = email
+    }
+
     func updatePollingInterval(_ minutes: Int) {
         pollingMinutes = minutes
         defaults.set(minutes, forKey: "pollingMinutes")

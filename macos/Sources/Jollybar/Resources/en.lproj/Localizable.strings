@@ -42,7 +42,6 @@
 "footer.refresh" = "Refresh";
 "footer.quit" = "Quit";
 "footer.settings" = "Settings";
-"footer.settingsEllipsis" = "Settings…";
 
 "meter.grokBot" = "Grok Bot";
 "meter.grokBotSpend" = "Grok Bot spend";
@@ -51,7 +50,6 @@
 "meter.otherModels" = "Other models";
 "meter.superGrok" = "SuperGrok";
 "meter.onDemand" = "On-demand";
-"meter.noCap" = "No cap";
 "meter.pace" = "Weekly pace";
 "meter.assumedMonthly" = "Cycle end is the next calendar month after the billing-cycle start.";
 
@@ -61,7 +59,6 @@
 "week.sprout" = "Week";
 "week.history" = "History";
 "section.more" = "More";
-"section.details" = "Details";
 "chart.empty" = "No history data yet.";
 "chart.weekly" = "Weekly";
 
@@ -130,7 +127,6 @@
 "detail.spend7" = "Spend, 7 days";
 "detail.api" = "Developer API";
 "detail.managementNote" = "Console prepaid balance and API spend. Separate from the weekly pool.";
-"detail.managementLong" = "Console prepaid balance and API spend. Separate from the weekly pool. The documented balance is shown with its sign.";
 
 "notifications.unavailable" = "Notifications require a packaged application build — run `make app` and launch the bundle.";
 "bud.poke" = "Poke Bud";

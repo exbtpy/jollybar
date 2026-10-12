@@ -303,9 +303,75 @@ final class JollyThemeTests: XCTestCase {
         XCTAssertEqual(MenuTheme.resolve("classic"), .bars)
         XCTAssertEqual(MenuTheme.resolve("companion"), .companion)
         XCTAssertEqual(MenuTheme.resolve("nope"), .percent)
-        XCTAssertTrue(MenuTheme.percent.showsCompanionPopover)
-        XCTAssertTrue(MenuTheme.companion.showsCompanionPopover)
-        XCTAssertFalse(MenuTheme.bars.showsCompanionPopover)
+    }
+
+    func testEveryMenuThemeShowsTheCompanionPopover() {
+        XCTAssertEqual(MenuTheme.allCases.map(\.rawValue).sorted(), ["bars", "companion", "percent"])
+        for theme in MenuTheme.allCases {
+            XCTAssertTrue(
+                PopoverContent.showsCompanionPopover(for: theme),
+                "\(theme.rawValue) must open the companion popover"
+            )
+        }
+        XCTAssertEqual(PopoverContent.width, 320)
+    }
+
+    @MainActor
+    func testCompanionPopoverOmitsAccountEmail() {
+        let email = "popover-reader@example.com"
+        let suite = "popover-email-\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let service = UsageService(
+            session: URLSession(configuration: .ephemeral),
+            proxyBaseURL: URL(string: "http://127.0.0.1:9")!,
+            managementBaseURL: URL(string: "http://127.0.0.1:9")!,
+            cursorBaseURL: URL(string: "http://127.0.0.1:9")!,
+            dashboardBaseURL: URL(string: "http://127.0.0.1:9")!,
+            sandSecretsURL: URL(fileURLWithPath: "/tmp/jollybar-missing-sand-secrets.json"),
+            authFileURL: URL(fileURLWithPath: "/tmp/jollybar-missing-auth.json"),
+            secretStore: MemorySecretStore(),
+            defaults: defaults
+        )
+        service.replaceAccountEmail(email)
+        service.reading = GrokBillingReading(
+            usedPercent: 12,
+            hasWeeklyPool: true,
+            resetsAt: nil,
+            periodType: "USAGE_PERIOD_TYPE_WEEKLY",
+            products: [],
+            extraCreditsCents: nil,
+            onDemandCapCents: nil,
+            onDemandUsedCents: nil,
+            isUnifiedBillingUser: nil,
+            subscriptionTier: "SuperGrok",
+            unavailableReason: nil
+        )
+        service.dashboardPresence = .ready
+        service.dashboardReading = CursorDashboardReading(
+            grokBotPercent: 12,
+            resetsAt: nil,
+            periodStart: nil,
+            includedLimitZero: false,
+            hasAvailableUsage: true,
+            accountEmail: email,
+            cursorModelsPercent: 4,
+            otherModelsPercent: 1,
+            onDemandKnown: true,
+            onDemand: nil,
+            grokBotUnavailableReason: nil,
+            cursorModelsUnavailableReason: nil
+        )
+        let model = CompanionPopoverModelBuilder.make(
+            service: service,
+            updaterError: nil,
+            percentStyle: .used,
+            chartMode: .sprout,
+            sprouts: []
+        )
+        XCTAssertEqual(model.planTitle, "SuperGrok")
+        XCTAssertFalse(PopoverContent.containsAccountEmail(model, email: email))
+        XCTAssertFalse(PopoverContent.visibleCopy(model).joined(separator: "\n").contains("@"))
     }
 
     func testMenuBarStyleMigrationRewritesOldValuesOnce() {
