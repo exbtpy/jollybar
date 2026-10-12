@@ -74,6 +74,8 @@
 "settings.menuBars" = "Barras de uso";
 "settings.menuCompanion" = "Compañero";
 "settings.menuBarHelp" = "Porcentaje muestra la carita y cuánto de la semana se usó. Barras de uso muestra la carita y los dos medidores. Compañero muestra un Bud pequeño y una barra mínima. Bud parpadea y respira, y se queda quieto con Reducir movimiento o el modo de bajo consumo.";
+"settings.budMoments" = "Momentos de Bud";
+"settings.budMomentsHelp" = "Un saludo corto en el primer despertar del día, una reacción cuando Bud se cansa o se preocupa, un salto cuando se reinicia la semana y un parpadeo cuando el puntero se queda sobre la barra de menú. Como mucho, unas pocas veces al día. Se apaga con Reducir movimiento o el modo de bajo consumo.";
 "settings.number" = "Número grande";
 "settings.numberHelp" = "El número grande muestra cuánto de la semana se usó, o cuánto queda. La barra de menú siempre muestra lo usado, para que el color signifique lo mismo.";
 "settings.off" = "Apagado";

@@ -74,26 +74,58 @@ struct MenuBarLabel: View {
     let bottomFraction: Double?
     let bottomLabel: String
 
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @AppStorage(BudMomentStore.enabledKey) private var momentsEnabled = true
+    @StateObject private var power = PowerState()
+    @StateObject private var moments = BudMomentPlayer()
+
     var body: some View {
-        switch theme {
-        case .percent:
-            percentItem
-        case .bars:
-            barsItem
-        case .companion:
-            MenuBarCompanionItem(
-                mood: mood,
-                usedPercent: usedPercent,
-                usageWindowStart: usageWindowStart
-            )
+        Group {
+            switch theme {
+            case .percent:
+                percentItem
+            case .bars:
+                barsItem
+            case .companion:
+                MenuBarCompanionItem(
+                    mood: mood,
+                    usedPercent: usedPercent,
+                    usageWindowStart: usageWindowStart,
+                    moment: moments.pose,
+                    momentActive: moments.isPlaying
+                )
+            }
         }
+        .onAppear { syncMoments() }
+        .onDisappear { moments.stop() }
+        .onChange(of: reduceMotion) { _, _ in syncMoments() }
+        .onChange(of: power.isLowPowerMode) { _, _ in syncMoments() }
+        .onChange(of: momentsEnabled) { _, _ in syncMoments() }
+        .onChange(of: mood) { _, newValue in
+            moments.noteMood(newValue)
+        }
+        .onChange(of: usedPercent) { _, _ in
+            moments.noteUsage(percent: usedPercent, windowStart: usageWindowStart)
+        }
+        .onChange(of: usageWindowStart) { _, _ in
+            moments.noteUsage(percent: usedPercent, windowStart: usageWindowStart)
+        }
+        .onHover { inside in
+            if inside { moments.noteHover() }
+        }
+        .background(MenuBarHoverCatcher { moments.noteHover() })
     }
 
     private var percentItem: some View {
         let text = UsageNumber.menuText(usedPercent: usedPercent)
         let tint = JollyTheme.menuTint(mood: mood, usedPercent: usedPercent)?.nsColor
-        return Image(nsImage: renderCompanionStatusIcon(mood: mood, percentText: text, tint: tint))
-            .accessibilityLabel(accessibilityText(percent: text))
+        return Image(nsImage: renderCompanionStatusIcon(
+            mood: mood,
+            percentText: text,
+            tint: tint,
+            moment: moments.pose
+        ))
+        .accessibilityLabel(accessibilityText(percent: text))
     }
 
     private var barsItem: some View {
@@ -104,9 +136,21 @@ struct MenuBarLabel: View {
             bottomFraction: bottomFraction,
             bottomLabel: bottomLabel,
             mouthFraction: MenuBarMouth.fraction(usedPercent: usedPercent),
-            tint: tint
+            tint: tint,
+            moment: moments.pose
         ))
         .accessibilityLabel(AppIdentity.displayName)
+    }
+
+    private func syncMoments() {
+        let allows = momentsEnabled && MotionPolicy.allowsMotion(
+            reduceMotion: reduceMotion,
+            lowPower: power.isLowPowerMode
+        )
+        moments.setAllowsMoments(allows)
+        moments.noteDayMark()
+        moments.noteMood(mood)
+        moments.noteUsage(percent: usedPercent, windowStart: usageWindowStart)
     }
 
     private func accessibilityText(percent: String) -> String {

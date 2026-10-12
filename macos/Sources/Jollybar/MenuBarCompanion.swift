@@ -256,6 +256,8 @@ struct MenuBarCompanionItem: View {
     let mood: CompanionMood
     let usedPercent: Double?
     let usageWindowStart: Date?
+    var moment: BudMomentPose = .rest
+    var momentActive: Bool = false
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @StateObject private var power = PowerState()
@@ -264,7 +266,13 @@ struct MenuBarCompanionItem: View {
     var body: some View {
         let text = UsageNumber.menuText(usedPercent: usedPercent)
         let fraction = MenuBarMouth.fraction(usedPercent: usedPercent)
-        Image(nsImage: renderCompanionMenuIcon(mood: mood, mouthFraction: fraction, frame: motion.frame))
+        Image(nsImage: renderCompanionMenuIcon(
+            mood: mood,
+            mouthFraction: fraction,
+            frame: motion.frame,
+            moment: moment,
+            momentActive: momentActive
+        ))
             .accessibilityLabel(accessibilityText(percent: text))
             .onAppear { syncMotion() }
             .onDisappear { motion.stop() }

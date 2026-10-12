@@ -93,6 +93,55 @@ final class CompanionPetSnapshotTests: XCTestCase {
         XCTAssertEqual(popovers.count, 7, "Expected a dark popover for each mood, one light popover, and one Spanish popover")
     }
 
+    /// One filmstrip per moment: `macos/.build/pet-snapshots/moments-<name>.png`.
+    func testWritesMomentFilmstrips() throws {
+        let directory = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .appendingPathComponent(".build/pet-snapshots", isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+
+        var wrote = 0
+        for kind in BudMomentKind.allCases {
+            let frames = BudMoments.frames(kind)
+            let images = frames.map { renderMomentGlyph(mood: momentMood(kind), pose: $0) }
+            guard let strip = momentStrip(images) else { continue }
+            XCTAssertGreaterThan(strip.size.width, (images.first?.size.width ?? 0) * 2)
+            guard let png = menuPNG(strip, pad: 10) else { continue }
+            try png.write(to: directory.appendingPathComponent("moments-\(kind.snapshotName).png"))
+            wrote += 1
+        }
+        if wrote == 0 {
+            throw XCTSkip("Moment filmstrips did not produce an image in this environment")
+        }
+        XCTAssertEqual(wrote, BudMomentKind.allCases.count)
+    }
+
+    private func momentMood(_ kind: BudMomentKind) -> CompanionMood {
+        switch kind {
+        case .morningHello, .resetDay: return .playful
+        case .worried: return .worried
+        case .tired: return .tired
+        case .hoverPeek: return .steady
+        }
+    }
+
+    private func momentStrip(_ frames: [NSImage]) -> NSImage? {
+        guard let first = frames.first, frames.count > 1 else { return nil }
+        let gap: CGFloat = 10
+        let width = frames.reduce(0) { $0 + $1.size.width } + gap * CGFloat(frames.count - 1)
+        let height = first.size.height
+        return NSImage(size: NSSize(width: width, height: height), flipped: false) { _ in
+            var x: CGFloat = 0
+            for image in frames {
+                image.draw(in: CGRect(x: x, y: 0, width: image.size.width, height: image.size.height))
+                x += image.size.width + gap
+            }
+            return true
+        }
+    }
+
     private func popover(
         mood: CompanionMood,
         usedPercent: Double,

@@ -60,7 +60,8 @@ func renderIcon(
     bottomFraction: Double?,
     bottomLabel: String,
     mouthFraction: Double? = nil,
-    tint: NSColor? = nil
+    tint: NSColor? = nil,
+    moment: BudMomentPose = .rest
 ) -> NSImage {
     let color = tint ?? NSColor.black
     let image = NSImage(size: NSSize(width: iconWidth, height: iconHeight), flipped: true) { _ in
@@ -69,11 +70,18 @@ func renderIcon(
         let topY = (iconHeight - barHeight * 2 - rowGap) / 2
         let bottomY = topY + barHeight + rowGap
         let faceY = (iconHeight - logoSize) / 2
+        let faceRect = CGRect(x: 0, y: faceY, width: logoSize, height: logoSize)
+        NSGraphicsContext.saveGraphicsState()
+        if moment != .rest {
+            momentTransform(pose: moment, around: faceRect).concat()
+        }
         drawLogoFace(
-            in: CGRect(x: 0, y: faceY, width: logoSize, height: logoSize),
+            in: faceRect,
             color: color,
-            mouthFraction: mouthFraction
+            mouthFraction: mouthFraction,
+            moment: moment
         )
+        NSGraphicsContext.restoreGraphicsState()
         drawMeter(label: topLabel, fraction: topFraction, barX: barX, barY: topY, labelX: offset, color: color, cacheLabel: tint == nil)
         drawMeter(label: bottomLabel, fraction: bottomFraction, barX: barX, barY: bottomY, labelX: offset, color: color, cacheLabel: tint == nil)
         return true
@@ -94,7 +102,8 @@ func renderUnauthenticatedIcon() -> NSImage {
 func renderCompanionStatusIcon(
     mood: CompanionMood,
     percentText: String,
-    tint: NSColor?
+    tint: NSColor?,
+    moment: BudMomentPose = .rest
 ) -> NSImage {
     _ = mood
     let font = menuPercentFont(size: 12)
@@ -113,11 +122,18 @@ func renderCompanionStatusIcon(
     let mouth = MenuBarMouth.fraction(percentText: percentText)
     let image = NSImage(size: NSSize(width: width, height: height), flipped: true) { _ in
         let faceY = (height - face) / 2
+        let faceRect = CGRect(x: 1, y: faceY, width: face, height: face)
+        NSGraphicsContext.saveGraphicsState()
+        if moment != .rest {
+            momentTransform(pose: moment, around: faceRect).concat()
+        }
         drawLogoFace(
-            in: CGRect(x: 1, y: faceY, width: face, height: face),
+            in: faceRect,
             color: color,
-            mouthFraction: mouth
+            mouthFraction: mouth,
+            moment: moment
         )
+        NSGraphicsContext.restoreGraphicsState()
         let textSize = percent.size()
         let textX = 1 + face + gap + percentWidth - textSize.width
         let textY = (height - textSize.height) / 2
@@ -130,22 +146,35 @@ func renderCompanionStatusIcon(
 
 /// Mini Bud in the mood color, plus a tiny bar filled to the headline percent.
 /// The image bounds stay fixed. `frame` only moves the bud, not the bar.
+/// A playing moment moves the bud instead, and the bar stays put.
 /// This image is never a template: the body is the mood color.
 func renderCompanionMenuIcon(
     mood: CompanionMood,
     mouthFraction: Double?,
-    frame: CompanionMenuFrame
+    frame: CompanionMenuFrame,
+    moment: BudMomentPose = .rest,
+    momentActive: Bool = false
 ) -> NSImage {
     let bud: CGFloat = 15
     let gap: CGFloat = 3
     let meterWidth: CGFloat = 13
     let height: CGFloat = 18
     let width = 1 + bud + gap + meterWidth + 2
+    let posing = momentActive || moment != .rest
     let image = NSImage(size: NSSize(width: width, height: height), flipped: true) { _ in
         let budRect = CGRect(x: 1, y: (height - bud) / 2, width: bud, height: bud)
         NSGraphicsContext.saveGraphicsState()
-        companionTransform(frame: frame, around: budRect).concat()
-        drawMiniBud(mood: mood, in: budRect, eyeOpen: frame.eyeOpen)
+        if posing {
+            momentTransform(pose: moment, around: budRect).concat()
+        } else {
+            companionTransform(frame: frame, around: budRect).concat()
+        }
+        drawMiniBud(
+            mood: mood,
+            in: budRect,
+            eyeOpen: posing ? moment.eyeOpen : frame.eyeOpen,
+            moment: posing ? moment : .rest
+        )
         NSGraphicsContext.restoreGraphicsState()
 
         let meter = CGRect(
@@ -155,6 +184,25 @@ func renderCompanionMenuIcon(
             height: 3
         )
         drawTinyMeter(in: meter, fraction: mouthFraction, color: JollyTheme.moodRGB(mood).nsColor)
+        return true
+    }
+    image.isTemplate = false
+    return image
+}
+
+/// Bud alone, padded so a hop or a stretch stays in the bitmap. Filmstrips use this.
+/// The menu bar applies the same pose to the glyph and leaves the meters still.
+func renderMomentGlyph(mood: CompanionMood, pose: BudMomentPose, side: CGFloat = 48) -> NSImage {
+    let pad = side * 0.45
+    let canvas = side + pad * 2
+    let image = NSImage(size: NSSize(width: canvas, height: canvas), flipped: true) { _ in
+        let rect = CGRect(x: pad, y: pad, width: side, height: side)
+        NSGraphicsContext.saveGraphicsState()
+        if pose != .rest {
+            momentTransform(pose: pose, around: rect).concat()
+        }
+        drawMiniBud(mood: mood, in: rect, eyeOpen: pose == .rest ? 1 : pose.eyeOpen, moment: pose)
+        NSGraphicsContext.restoreGraphicsState()
         return true
     }
     image.isTemplate = false
@@ -172,36 +220,52 @@ private func menuPercentFont(size: CGFloat) -> NSFont {
 
 /// Closed-eye arcs and a horizontal bar mouth, in one color so the image can be a template.
 /// Fractions are relative to the face box, matching the icon SVG on the squircle.
-private func drawLogoFace(in rect: CGRect, color: NSColor, mouthFraction: Double?) {
+private func drawLogoFace(in rect: CGRect, color: NSColor, mouthFraction: Double?, moment: BudMomentPose = .rest) {
     let weight = max(1.2, rect.width * 0.10)
-    strokeLogoEye(center: 0.32, in: rect, color: color, weight: weight)
-    strokeLogoEye(center: 0.68, in: rect, color: color, weight: weight)
+    let shift = moment.glance * rect.width * 0.08
+    if moment != .rest && moment.eyeOpen >= 0.25 {
+        fillLogoEye(center: 0.32, in: rect, color: color, open: moment.eyeOpen, xShift: shift)
+        fillLogoEye(center: 0.68, in: rect, color: color, open: moment.eyeOpen, xShift: shift)
+    } else {
+        strokeLogoEye(center: 0.32, in: rect, color: color, weight: weight, xShift: shift)
+        strokeLogoEye(center: 0.68, in: rect, color: color, weight: weight, xShift: shift)
+    }
 
+    let yawnExtra = moment.yawn * rect.height * 0.16
     let mouth = CGRect(
         x: rect.minX + rect.width * 0.13,
         y: rect.minY + rect.height * 0.62,
         width: rect.width * 0.74,
-        height: max(2, rect.height * 0.117)
+        height: max(2, rect.height * 0.117) + yawnExtra
     )
     let radius = mouth.height / 2
     color.withAlphaComponent(0.22).setFill()
     NSBezierPath(roundedRect: mouth, xRadius: radius, yRadius: radius).fill()
 
-    guard let mouthFraction, mouthFraction > 0 else { return }
-    let clamped = min(1, max(0, mouthFraction))
-    let fillWidth = mouth.width * CGFloat(clamped)
-    guard fillWidth > 0.4 else { return }
+    if let mouthFraction, mouthFraction > 0 {
+        let clamped = min(1, max(0, mouthFraction))
+        let fillWidth = mouth.width * CGFloat(clamped)
+        if fillWidth > 0.4 {
+            color.setFill()
+            NSBezierPath(
+                roundedRect: CGRect(x: mouth.minX, y: mouth.minY, width: fillWidth, height: mouth.height),
+                xRadius: radius,
+                yRadius: radius
+            ).fill()
+        }
+    }
+
+    guard moment.sweat > 0.04 else { return }
+    let drop = max(1.2, rect.width * 0.13)
+    let x = rect.maxX - drop * 1.7
+    let y = rect.minY + rect.height * 0.10 + rect.height * 0.46 * moment.sweat
     color.setFill()
-    NSBezierPath(
-        roundedRect: CGRect(x: mouth.minX, y: mouth.minY, width: fillWidth, height: mouth.height),
-        xRadius: radius,
-        yRadius: radius
-    ).fill()
+    NSBezierPath(ovalIn: CGRect(x: x, y: y, width: drop * 0.62, height: drop)).fill()
 }
 
-private func strokeLogoEye(center: CGFloat, in rect: CGRect, color: NSColor, weight: CGFloat) {
+private func strokeLogoEye(center: CGFloat, in rect: CGRect, color: NSColor, weight: CGFloat, xShift: CGFloat = 0) {
     let half = rect.width * 0.11
-    let midX = rect.minX + rect.width * center
+    let midX = rect.minX + rect.width * center + xShift
     let baseY = rect.minY + rect.height * 0.47
     let peakY = rect.minY + rect.height * 0.35
     let path = NSBezierPath()
@@ -215,6 +279,15 @@ private func strokeLogoEye(center: CGFloat, in rect: CGRect, color: NSColor, wei
     path.lineWidth = weight
     path.lineCapStyle = .round
     path.stroke()
+}
+
+private func fillLogoEye(center: CGFloat, in rect: CGRect, color: NSColor, open: CGFloat, xShift: CGFloat) {
+    let diameter = max(1.3, rect.width * 0.14)
+    let height = max(0.7, diameter * min(1, max(0.25, open)))
+    let midX = rect.minX + rect.width * center + xShift
+    let y = rect.minY + rect.height * 0.36
+    color.setFill()
+    NSBezierPath(ovalIn: CGRect(x: midX - diameter / 2, y: y, width: diameter, height: height)).fill()
 }
 
 private func addQuadCurve(_ path: NSBezierPath, to end: NSPoint, control: NSPoint) {
@@ -286,6 +359,17 @@ private func drawDashedBar(x: CGFloat, y: CGFloat, width: CGFloat, height: CGFlo
     path.stroke()
 }
 
+/// Scale about the visual bottom, then hop up. In a flipped image, up is negative y.
+private func momentTransform(pose: BudMomentPose, around rect: CGRect) -> NSAffineTransform {
+    let transform = NSAffineTransform()
+    let hop = -pose.hop * rect.height
+    let anchorY = rect.maxY
+    transform.translateX(by: rect.midX, yBy: anchorY + hop)
+    transform.scaleX(by: pose.scaleX, yBy: pose.scaleY)
+    transform.translateX(by: -rect.midX, yBy: -anchorY)
+    return transform
+}
+
 /// Translate to the bud center, hop, rotate, scale, then move back.
 /// Hop is negative in the flipped menu-bar image, so the bud rises.
 private func companionTransform(frame: CompanionMenuFrame, around rect: CGRect) -> NSAffineTransform {
@@ -299,7 +383,7 @@ private func companionTransform(frame: CompanionMenuFrame, around rect: CGRect) 
     return transform
 }
 
-private func drawMiniBud(mood: CompanionMood, in rect: CGRect, eyeOpen: CGFloat) {
+private func drawMiniBud(mood: CompanionMood, in rect: CGRect, eyeOpen: CGFloat, moment: BudMomentPose = .rest) {
     let ink = JollyTheme.ink.nsColor
     let fill = JollyTheme.moodRGB(mood).nsColor
     let cream = JollyTheme.cream.nsColor
@@ -325,9 +409,10 @@ private func drawMiniBud(mood: CompanionMood, in rect: CGRect, eyeOpen: CGFloat)
     bodyPath.lineWidth = max(0.7, rect.width * 0.06)
     bodyPath.stroke()
 
-    let open = mood == .asleep ? CGFloat(0) : eyeOpen
-    let left = body.minX + body.width * 0.22
-    let right = body.minX + body.width * 0.58
+    let open = (moment == .rest && mood == .asleep) ? CGFloat(0) : eyeOpen
+    let shift = moment.glance * body.width * 0.10
+    let left = body.minX + body.width * 0.22 + shift
+    let right = body.minX + body.width * 0.58 + shift
     let eyeY = body.minY + body.height * 0.34
     if open < 0.25 {
         strokeMiniArc(x: left, y: eyeY, width: body.width * 0.20, color: ink)
@@ -346,7 +431,27 @@ private func drawMiniBud(mood: CompanionMood, in rect: CGRect, eyeOpen: CGFloat)
         width: mouthWidth,
         height: body.height * 0.18
     )
-    strokeMiniMouth(mood.mouth, in: mouthRect, color: ink)
+    if moment.yawn > 0.08 {
+        let oval = CGRect(
+            x: mouthRect.minX,
+            y: mouthRect.minY,
+            width: mouthRect.width,
+            height: mouthRect.height * (0.7 + moment.yawn * 1.6)
+        )
+        let path = NSBezierPath(ovalIn: oval)
+        ink.setStroke()
+        path.lineWidth = max(0.8, rect.width * 0.045)
+        path.stroke()
+    } else {
+        strokeMiniMouth(mood.mouth, in: mouthRect, color: ink)
+    }
+
+    guard moment.sweat > 0.04 else { return }
+    let drop = max(1.3, rect.width * 0.10)
+    let x = rect.maxX - drop * 1.55
+    let y = rect.minY + rect.height * 0.16 + rect.height * 0.42 * moment.sweat
+    ink.setFill()
+    NSBezierPath(ovalIn: CGRect(x: x, y: y, width: drop * 0.62, height: drop)).fill()
 }
 
 private func strokeMiniArc(x: CGFloat, y: CGFloat, width: CGFloat, color: NSColor) {

@@ -88,6 +88,7 @@ struct SettingsWindowContent: View {
     @State private var didApplyAdvancedDefault = false
     @AppStorage(MenuTheme.defaultsKey) private var menuThemeRaw = MenuTheme.defaultTheme.rawValue
     @AppStorage(UsagePercentStyle.defaultsKey) private var percentStyleRaw = UsagePercentStyle.used.rawValue
+    @AppStorage(BudMomentStore.enabledKey) private var budMomentsEnabled = true
 
     var body: some View {
         let heights = SettingsLayout.contentHeights(visibleHeight: SettingsLayout.currentVisibleHeight)
@@ -152,6 +153,14 @@ struct SettingsWindowContent: View {
                 Text(L10n.text(
                     "settings.menuBarHelp",
                     "Percent shows the face and how much of the week is used. Usage bars shows the face and the two meters. Companion shows a small Bud and a tiny bar. Bud blinks and breathes, and stays still when Reduce Motion or Low Power Mode is on."
+                ))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+
+                Toggle(L10n.text("settings.budMoments", "Bud moments"), isOn: $budMomentsEnabled)
+                Text(L10n.text(
+                    "settings.budMomentsHelp",
+                    "A short hello on the first wake of the day, a reaction when Bud gets tired or worried, a bounce when the week resets, and a blink when the pointer rests on the menu bar. At most a few times a day. Off when Reduce Motion or Low Power Mode is on."
                 ))
                     .font(.caption)
                     .foregroundStyle(.secondary)
