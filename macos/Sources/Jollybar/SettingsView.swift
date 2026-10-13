@@ -88,6 +88,7 @@ struct SettingsWindowContent: View {
     @State private var didApplyAdvancedDefault = false
     @AppStorage(MenuTheme.defaultsKey) private var menuThemeRaw = MenuTheme.defaultTheme.rawValue
     @AppStorage(UsagePercentStyle.defaultsKey) private var percentStyleRaw = UsagePercentStyle.used.rawValue
+    @AppStorage(BudMomentStore.enabledKey) private var budMomentsEnabled = true
 
     var body: some View {
         let heights = SettingsLayout.contentHeights(visibleHeight: SettingsLayout.currentVisibleHeight)
@@ -129,16 +130,37 @@ struct SettingsWindowContent: View {
             Section(L10n.text("settings.general", "General")) {
                 LaunchAtLoginToggle()
 
+                Picker(L10n.text("settings.polling", "Polling Interval"), selection: Binding(
+                    get: { service.pollingMinutes },
+                    set: { service.updatePollingInterval($0) }
+                )) {
+                    ForEach(UsageService.pollingOptions, id: \.self) { mins in
+                        Text(pollingOptionLabel(for: mins))
+                            .tag(mins)
+                    }
+                }
+            }
+
+            Section(L10n.text("settings.appearance", "Appearance")) {
                 Picker(L10n.text("settings.menuBar", "Menu bar"), selection: Binding(
-                    get: { menuThemeRaw },
+                    get: { MenuTheme.resolve(menuThemeRaw).rawValue },
                     set: { menuThemeRaw = $0 }
                 )) {
-                    Text(L10n.text("settings.classic", "Classic")).tag(MenuTheme.classic.rawValue)
-                    Text(AppIdentity.companionName).tag(MenuTheme.companion.rawValue)
+                    Text(L10n.text("settings.menuPercent", "Percent")).tag(MenuTheme.percent.rawValue)
+                    Text(L10n.text("settings.menuBars", "Usage bars")).tag(MenuTheme.bars.rawValue)
+                    Text(L10n.text("settings.menuCompanion", "Companion")).tag(MenuTheme.companion.rawValue)
                 }
                 Text(L10n.text(
                     "settings.menuBarHelp",
-                    "Classic keeps the two bars and a chart glyph. Bud is the menu-bar face and the weekly meter. The animation runs only while the menu is open."
+                    "Percent shows the face and how much of the week is used. Usage bars shows the face and the two meters. Companion shows a small Bud and a tiny bar. Bud blinks and breathes, and stays still when Reduce Motion or Low Power Mode is on."
+                ))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+
+                Toggle(L10n.text("settings.budMoments", "Bud moments"), isOn: $budMomentsEnabled)
+                Text(L10n.text(
+                    "settings.budMomentsHelp",
+                    "A short hello on the first wake of the day, a reaction when Bud gets tired or worried, a bounce when the week resets, and a blink when the pointer rests on the menu bar. At most a few times a day. Off when Reduce Motion or Low Power Mode is on."
                 ))
                     .font(.caption)
                     .foregroundStyle(.secondary)
@@ -156,16 +178,6 @@ struct SettingsWindowContent: View {
                 ))
                     .font(.caption)
                     .foregroundStyle(.secondary)
-
-                Picker(L10n.text("settings.polling", "Polling Interval"), selection: Binding(
-                    get: { service.pollingMinutes },
-                    set: { service.updatePollingInterval($0) }
-                )) {
-                    ForEach(UsageService.pollingOptions, id: \.self) { mins in
-                        Text(pollingOptionLabel(for: mins))
-                            .tag(mins)
-                    }
-                }
             }
 
             Section(L10n.text("settings.notifications", "Notifications")) {

@@ -28,6 +28,11 @@ if [[ ! -f "$ARTIFACT_PATH" ]]; then
     exit 1
 fi
 
+strings_catalogs_present() {
+    local root="$1"
+    [[ -f "$root/en.lproj/Localizable.strings" && -f "$root/es.lproj/Localizable.strings" ]]
+}
+
 verify_app_bundle() {
     local app_bundle="$1"
     local app_plist="$app_bundle/Contents/Info.plist"
@@ -39,13 +44,18 @@ verify_app_bundle() {
     [[ -d "$resource_bundle" ]] || { echo "Error: missing SwiftPM resource bundle"; exit 1; }
     # `swift build` writes a flat bundle. `swift build --arch` (XCBuild) writes
     # a normal macOS bundle with Contents/Info.plist and Contents/Resources.
-    if [[ -f "$resource_bundle/Info.plist" && -f "$resource_bundle/en.lproj/Localizable.strings" ]]; then
+    # Both catalogs have to ship or a Spanish Mac stays on the English fallback.
+    if [[ -f "$resource_bundle/Info.plist" ]] && strings_catalogs_present "$resource_bundle"; then
         :
-    elif [[ -f "$resource_bundle/Contents/Info.plist" && -f "$resource_bundle/Contents/Resources/en.lproj/Localizable.strings" ]]; then
+    elif [[ -f "$resource_bundle/Contents/Info.plist" ]] && strings_catalogs_present "$resource_bundle/Contents/Resources"; then
         :
     else
-        echo "Error: resource bundle is missing Info.plist or Localizable.strings"
+        echo "Error: resource bundle is missing Info.plist or en/es Localizable.strings"
         find "$resource_bundle" -print
+        exit 1
+    fi
+    if ! plutil -extract CFBundleLocalizations xml1 -o - "$app_plist" | grep -q '<string>es</string>'; then
+        echo "Error: CFBundleLocalizations is missing es, so macOS will not load Spanish."
         exit 1
     fi
     [[ -d "$sparkle_framework" ]] || { echo "Error: missing Sparkle.framework"; exit 1; }

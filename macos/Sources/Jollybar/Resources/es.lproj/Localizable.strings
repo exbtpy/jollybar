@@ -29,7 +29,9 @@
 "speech.asleep.1" = "Me echo una siesta hasta la siguiente ventana.";
 "speech.asleep.2" = "En pausa, llegamos al límite.";
 
-"pace.ahead" = "%d%% arriba del ritmo · se acaba ~%@";
+"pace.ahead" = "Vas %d%% más rápido que el ritmo · se acaba ~%@";
+"pace.faster" = "Vas %d%% más rápido que el ritmo";
+"pace.behind" = "Por debajo del ritmo, te sobra %d%%";
 "pace.lasts" = "A este ritmo alcanza hasta el reinicio";
 "pace.atLimit" = "En el límite hasta el reinicio";
 "reset.line" = "Se reinicia %@ · en %@";
@@ -40,7 +42,6 @@
 "footer.refresh" = "Actualizar";
 "footer.quit" = "Salir";
 "footer.settings" = "Ajustes";
-"footer.settingsEllipsis" = "Ajustes…";
 
 "meter.grokBot" = "Grok Bot";
 "meter.grokBotSpend" = "Gasto de Grok Bot";
@@ -49,7 +50,6 @@
 "meter.otherModels" = "Otros modelos";
 "meter.superGrok" = "SuperGrok";
 "meter.onDemand" = "Bajo demanda";
-"meter.noCap" = "Sin tope";
 "meter.pace" = "Ritmo semanal";
 "meter.assumedMonthly" = "El fin del ciclo es el mes siguiente al inicio del ciclo de facturación.";
 
@@ -59,16 +59,20 @@
 "week.sprout" = "Semana";
 "week.history" = "Historial";
 "section.more" = "Más";
-"section.details" = "Detalles";
 "chart.empty" = "Todavía no hay historial.";
 "chart.weekly" = "Semanal";
 
 "percent.used" = "Usado";
 "percent.left" = "Restante";
 
+"settings.appearance" = "Apariencia";
 "settings.menuBar" = "Barra de menú";
-"settings.classic" = "Clásico";
-"settings.menuBarHelp" = "Clásico conserva las dos barras y el ícono de la gráfica. Bud es la carita de la barra de menú y el medidor semanal. La animación solo corre mientras el menú está abierto.";
+"settings.menuPercent" = "Porcentaje";
+"settings.menuBars" = "Barras de uso";
+"settings.menuCompanion" = "Compañero";
+"settings.menuBarHelp" = "Porcentaje muestra la carita y cuánto de la semana se usó. Barras de uso muestra la carita y los dos medidores. Compañero muestra un Bud pequeño y una barra mínima. Bud parpadea y respira, y se queda quieto con Reducir movimiento o el modo de bajo consumo.";
+"settings.budMoments" = "Momentos de Bud";
+"settings.budMomentsHelp" = "Un saludo corto en el primer despertar del día, una reacción cuando Bud se cansa o se preocupa, un salto cuando se reinicia la semana y un parpadeo cuando el puntero se queda sobre la barra de menú. Como mucho, unas pocas veces al día. Se apaga con Reducir movimiento o el modo de bajo consumo.";
 "settings.number" = "Número grande";
 "settings.numberHelp" = "El número grande muestra cuánto de la semana se usó, o cuánto queda. La barra de menú siempre muestra lo usado, para que el color signifique lo mismo.";
 "settings.off" = "Apagado";
@@ -123,7 +127,6 @@
 "detail.spend7" = "Gasto, 7 días";
 "detail.api" = "API de desarrollador";
 "detail.managementNote" = "Saldo prepago de la consola y gasto de la API. Van aparte de la bolsa semanal.";
-"detail.managementLong" = "Saldo prepago de la consola y gasto de la API. Van aparte de la bolsa semanal. El saldo documentado se muestra con su signo.";
 
 "notifications.unavailable" = "Las notificaciones necesitan la app empaquetada: corre `make app` y abre el bundle.";
 "bud.poke" = "Toca a Bud";

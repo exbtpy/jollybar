@@ -4,7 +4,7 @@ import Foundation
 ///
 /// Elapsed percent comes from `currentPeriodStart` and `nextResetTimestampUtc`.
 /// When the start is missing, the window is the seven days before reset.
-/// "Ahead of pace" means used percent is higher than elapsed percent.
+/// A positive gap means used percent is higher than elapsed percent.
 /// The run-out time is set only when that line reaches 100% strictly before reset.
 enum UsagePace {
     static let assumedWindow: TimeInterval = 7 * 24 * 60 * 60
@@ -95,6 +95,9 @@ enum UsagePace {
 }
 
 enum UsagePaceFormat {
+    /// Used percent within this many points of elapsed time still counts as on pace.
+    static let onPaceBand = 5
+
     static func resetLine(
         reset: Date,
         now: Date,
@@ -103,7 +106,7 @@ enum UsagePaceFormat {
     ) -> String {
         let seconds = Int(reset.timeIntervalSince(now))
         if seconds <= 0 {
-            return L10n.text("reset.now", "Resets now")
+            return L10n.text("reset.now", "Resets now", locale: locale)
         }
         let stamp = JollyClock.weekdayAndTime(reset, locale: locale, calendar: calendar)
         return L10n.format(
@@ -135,36 +138,36 @@ enum UsagePaceFormat {
         calendar: Calendar = .current
     ) -> String {
         if usedPercent >= 100 {
-            return L10n.text("pace.atLimit", "At the limit until reset")
+            return L10n.text("pace.atLimit", "At the limit until reset", locale: locale)
         }
-        guard let runsOut = forecast.runsOutAt else {
-            return L10n.text("pace.lasts", "On pace to last until reset")
+        if abs(forecast.aheadPoints) <= onPaceBand {
+            return L10n.text("pace.lasts", "On pace to last until reset", locale: locale)
         }
-        let points = max(forecast.aheadPoints, 1)
-        let when = shortWhen(runsOut, locale: locale, calendar: calendar)
+        if forecast.aheadPoints > 0 {
+            let points = forecast.aheadPoints
+            guard let runsOut = forecast.runsOutAt else {
+                return L10n.format(
+                    "pace.faster",
+                    "Using %d%% faster than pace",
+                    locale: locale,
+                    points
+                )
+            }
+            let when = JollyClock.weekdayAndTime(runsOut, locale: locale, calendar: calendar)
+            return L10n.format(
+                "pace.ahead",
+                "Using %d%% faster than pace · runs out ~%@",
+                locale: locale,
+                points,
+                when
+            )
+        }
         return L10n.format(
-            "pace.ahead",
-            "%d%% ahead of pace · runs out ~%@",
+            "pace.behind",
+            "Under pace, %d%% to spare",
             locale: locale,
-            points,
-            when
+            abs(forecast.aheadPoints)
         )
-    }
-
-    static func shortWhen(
-        _ date: Date,
-        locale: Locale,
-        calendar: Calendar
-    ) -> String {
-        let day = date.formatted(
-            JollyClock.style(locale: locale, calendar: calendar)
-                .weekday(.abbreviated)
-        )
-        let time = date.formatted(
-            JollyClock.style(locale: locale, calendar: calendar, time: .shortened)
-                .hour(.defaultDigits(amPM: .abbreviated))
-        )
-        return "\(day) \(time)"
     }
 }
 
@@ -196,9 +199,12 @@ enum JollyClock {
     }
 
     private static func formatted(_ date: Date, locale: Locale, calendar: Calendar, format: String) -> String {
+        var calendar = calendar
+        calendar.locale = locale
         let formatter = DateFormatter()
-        formatter.locale = locale
+        // Locale can reset the time zone and the pattern, so both are applied after it.
         formatter.calendar = calendar
+        formatter.locale = locale
         formatter.timeZone = calendar.timeZone
         formatter.dateFormat = format
         return formatter.string(from: date)

@@ -157,16 +157,4 @@ final class CursorUsageTests: XCTestCase {
         XCTAssertNotNil(CursorUsageParser.member(matching: "person@example.com", in: members))
         XCTAssertNil(CursorUsageParser.member(matching: "other@example.com", in: members))
     }
-
-    func testResetCountdownMatchesTheTwoWindowWording() {
-        let now = Date(timeIntervalSince1970: 0)
-        XCTAssertEqual(
-            resetCountdown(until: now.addingTimeInterval(54 * 60 + 29), now: now),
-            "Resets 54 min, 29 secs"
-        )
-        XCTAssertEqual(
-            resetCountdown(until: now.addingTimeInterval((3 * 24 + 4) * 3600), now: now),
-            "Resets 3 days, 4 hrs"
-        )
-    }
 }

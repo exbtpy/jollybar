@@ -57,9 +57,9 @@ enum BudSpeech {
         let index = stableIndex(seed: seed, count: pool.count)
         let entry = pool[index]
         if let weekday, entry.usesWeekday {
-            return String(format: L10n.text(entry.key, entry.fallback), locale: locale, weekday)
+            return String(format: L10n.text(entry.key, entry.fallback, locale: locale), locale: locale, weekday)
         }
-        return L10n.text(entry.key, entry.fallback)
+        return L10n.text(entry.key, entry.fallback, locale: locale)
     }
 
     /// Stable for a weekly window, and different when the kind changes.

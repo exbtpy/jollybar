@@ -29,7 +29,9 @@
 "speech.asleep.1" = "I'll nap until the next window.";
 "speech.asleep.2" = "Paused at the limit.";
 
-"pace.ahead" = "%d%% ahead of pace · runs out ~%@";
+"pace.ahead" = "Using %d%% faster than pace · runs out ~%@";
+"pace.faster" = "Using %d%% faster than pace";
+"pace.behind" = "Under pace, %d%% to spare";
 "pace.lasts" = "On pace to last until reset";
 "pace.atLimit" = "At the limit until reset";
 "reset.line" = "Resets %@ · in %@";
@@ -40,7 +42,6 @@
 "footer.refresh" = "Refresh";
 "footer.quit" = "Quit";
 "footer.settings" = "Settings";
-"footer.settingsEllipsis" = "Settings…";
 
 "meter.grokBot" = "Grok Bot";
 "meter.grokBotSpend" = "Grok Bot spend";
@@ -49,7 +50,6 @@
 "meter.otherModels" = "Other models";
 "meter.superGrok" = "SuperGrok";
 "meter.onDemand" = "On-demand";
-"meter.noCap" = "No cap";
 "meter.pace" = "Weekly pace";
 "meter.assumedMonthly" = "Cycle end is the next calendar month after the billing-cycle start.";
 
@@ -59,16 +59,20 @@
 "week.sprout" = "Week";
 "week.history" = "History";
 "section.more" = "More";
-"section.details" = "Details";
 "chart.empty" = "No history data yet.";
 "chart.weekly" = "Weekly";
 
 "percent.used" = "Used";
 "percent.left" = "Left";
 
+"settings.appearance" = "Appearance";
 "settings.menuBar" = "Menu bar";
-"settings.classic" = "Classic";
-"settings.menuBarHelp" = "Classic keeps the two bars and a chart glyph. Bud is the menu-bar face and the weekly meter. The animation runs only while the menu is open.";
+"settings.menuPercent" = "Percent";
+"settings.menuBars" = "Usage bars";
+"settings.menuCompanion" = "Companion";
+"settings.menuBarHelp" = "Percent shows the face and how much of the week is used. Usage bars shows the face and the two meters. Companion shows a small Bud and a tiny bar. Bud blinks and breathes, and stays still when Reduce Motion or Low Power Mode is on.";
+"settings.budMoments" = "Bud moments";
+"settings.budMomentsHelp" = "A short hello on the first wake of the day, a reaction when Bud gets tired or worried, a bounce when the week resets, and a blink when the pointer rests on the menu bar. At most a few times a day. Off when Reduce Motion or Low Power Mode is on.";
 "settings.number" = "Big number";
 "settings.numberHelp" = "The big number shows how much of the week is used, or how much is left. The menu bar always shows used, so the color still means the same thing.";
 "settings.off" = "Off";
@@ -123,7 +127,6 @@
 "detail.spend7" = "Spend, 7 days";
 "detail.api" = "Developer API";
 "detail.managementNote" = "Console prepaid balance and API spend. Separate from the weekly pool.";
-"detail.managementLong" = "Console prepaid balance and API spend. Separate from the weekly pool. The documented balance is shown with its sign.";
 
 "notifications.unavailable" = "Notifications require a packaged application build — run `make app` and launch the bundle.";
 "bud.poke" = "Poke Bud";
